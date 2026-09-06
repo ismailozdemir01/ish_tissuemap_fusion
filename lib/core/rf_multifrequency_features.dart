@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../models/rf_measurement.dart';
 
 class RfFrequencyFeatureSet {
@@ -70,7 +72,7 @@ class RfMultifrequencyFeatureExtractor {
         baselineDbm: baseline,
         meanDbm: mean,
         deltaDb: mean - baseline,
-        standardDeviationDb: variance.sqrt(),
+        standardDeviationDb: math.sqrt(variance),
         temporalSlopeDbPerSecond: slope,
         quality: quality,
       ));
@@ -90,7 +92,7 @@ class RfMultifrequencyFeatureExtractor {
           upperFrequencyMHz: b.frequencyMHz,
           deltaDbDifference: a.deltaDb - b.deltaDb,
           meanDifferenceDb: a.meanDbm - b.meanDbm,
-          quality: a.quality < b.quality ? a.quality : b.quality,
+          quality: math.min(a.quality, b.quality),
         ));
       }
     }
@@ -112,19 +114,4 @@ class RfMultifrequencyFeatureExtractor {
     }
     return denominator == 0 ? 0 : numerator / denominator;
   }
-}
-
-extension on double {
-  double sqrt() => this < 0 ? double.nan : this == 0 ? 0 : _sqrt(this);
-}
-
-double _sqrt(double value) {
-  var x = value;
-  var next = (x + 1) / 2;
-  for (var i = 0; i < 32; i++) {
-    if ((next - x).abs() < 1e-12) break;
-    x = next;
-    next = (x + value / x) / 2;
-  }
-  return next;
 }
