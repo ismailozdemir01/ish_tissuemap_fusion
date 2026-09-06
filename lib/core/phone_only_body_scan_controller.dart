@@ -33,25 +33,30 @@ class PhoneOnlyBodyScanController {
     PoseHistory? poseHistory,
     OpticalRegistrationEngine? opticalRegistration,
     CommonCoordinateFusionEngine? coordinateFusion,
-  })  : acquisition = acquisition ?? AcquisitionSession(sensors: PhoneSensorRegistry.defaults().sensors),
-        rf = rf ?? WifiRfService(),
-        camera = camera ?? OpticalCameraService(),
-        visualTracking = visualTracking ?? VisualTrackingService(),
-        bodyScan = bodyScan ?? BodyScanEngine(minimumPoseQuality: 0.25),
-        rfMapper = rfMapper ?? RfSpatialMapper(),
-        poseHistory = poseHistory ?? PoseHistory(),
-        opticalRegistration = opticalRegistration ?? const OpticalRegistrationEngine(),
-        coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine(rfMapper: rfMapper);
+  }) {
+    this.acquisition = acquisition ?? AcquisitionSession(sensors: PhoneSensorRegistry.defaults().sensors);
+    this.rf = rf ?? WifiRfService();
+    this.camera = camera ?? OpticalCameraService();
+    this.visualTracking = visualTracking ?? VisualTrackingService();
+    this.bodyScan = bodyScan ?? BodyScanEngine(minimumPoseQuality: 0.25);
+    this.rfMapper = rfMapper ?? RfSpatialMapper();
+    this.poseHistory = poseHistory ?? PoseHistory();
+    this.opticalRegistration = opticalRegistration ?? const OpticalRegistrationEngine();
+    this.coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine(
+      poseHistory: this.poseHistory,
+      rfMapper: this.rfMapper,
+    );
+  }
 
-  final AcquisitionSession acquisition;
-  final WifiRfService rf;
-  final OpticalCameraService camera;
-  final VisualTrackingService visualTracking;
-  final BodyScanEngine bodyScan;
-  final RfSpatialMapper rfMapper;
-  final PoseHistory poseHistory;
-  final OpticalRegistrationEngine opticalRegistration;
-  final CommonCoordinateFusionEngine coordinateFusion;
+  late final AcquisitionSession acquisition;
+  late final WifiRfService rf;
+  late final OpticalCameraService camera;
+  late final VisualTrackingService visualTracking;
+  late final BodyScanEngine bodyScan;
+  late final RfSpatialMapper rfMapper;
+  late final PoseHistory poseHistory;
+  late final OpticalRegistrationEngine opticalRegistration;
+  late final CommonCoordinateFusionEngine coordinateFusion;
 
   final StreamController<SpatialAcquisitionSample> _samples = StreamController.broadcast();
   final StreamController<OpticalFrame> _frames = StreamController.broadcast();
@@ -157,7 +162,6 @@ class PhoneOnlyBodyScanController {
     if (!_running || !measurement.isUsable) return;
     final pose = poseHistory.interpolate(measurement.timestampMicros, minimumQuality: 0.25);
     if (pose == null || measurement.rssiDbm == null) return;
-    rfMapper.add(RfSpatialPoint(x: pose.x, y: pose.y, z: pose.z, rssiDbm: measurement.rssiDbm!, frequencyMHz: measurement.frequencyMHz, quality: measurement.quality, uncertaintyDb: _poseUncertaintyDb(pose)), measurement);
     coordinateFusion.addRfMeasurement(measurement);
     _emitSpatial(RawSignalSample(
       sensorId: 'phone.wifi.rf',
