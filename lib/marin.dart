@@ -5,32 +5,29 @@ import 'core/app_theme.dart';
 import 'models/chronos_snapshot.dart';
 import 'models/user_profile.dart';
 import 'models/medication.dart';
+import 'models/anomaly_report.dart';
+import 'models/hive_adapters.dart';
 
-void main() async {
+Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Hive veritabanını başlat
   await Hive.initFlutter();
-  Hive.registerAdapter(ChronosSnapshotAdapter());
-  Hive.registerAdapter(UserProfileAdapter());
-  Hive.registerAdapter(MedicationAdapter());
+  if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(ChronosSnapshotAdapter());
+  if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(UserProfileAdapter());
+  if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(MedicationAdapter());
+  if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(AnomalyReportAdapter());
   await Hive.openBox<ChronosSnapshot>('chronos');
   await Hive.openBox<UserProfile>('profiles');
   await Hive.openBox<Medication>('medications');
-
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ISH TissueMap Fusion',
-      theme: AppTheme.darkTheme,
-      home: const ConnectionScreen(),
-      debugShowCheckedModeBanner: false,
-    );
-  }
+  Widget build(BuildContext context) => MaterialApp(
+        title: 'ISH TissueMap Fusion',
+        theme: AppTheme.darkTheme,
+        home: const ConnectionScreen(),
+        debugShowCheckedModeBanner: false,
+      );
 }
