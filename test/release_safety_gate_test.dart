@@ -51,15 +51,17 @@ void main() {
     expect(analysis, contains('MODEL_UNAVAILABLE'));
   });
 
-  test('5. RF provenance exposes real access level and never fabricates CSI/IQ/phase', () {
+  test('5. RF provenance exposes real access levels and never fabricates CSI/IQ/phase', () {
     final measurement = _read('lib/models/rf_measurement.dart');
     expect(rfService, contains('readWifiRf'));
     expect(rfService, isNot(contains('fakeCsi')));
     expect(rfService, isNot(contains('synthetic')));
-    expect(measurement, contains('RfAccessLevel.rssi'));
-    expect(measurement, contains('RfAccessLevel.csi'));
-    expect(measurement, contains('RfAccessLevel.iq'));
-    expect(measurement, contains('RfAccessLevel.phase'));
+    expect(measurement, contains('enum RfAccessLevel'));
+    expect(measurement, contains('rssi,'));
+    expect(measurement, contains('csi,'));
+    expect(measurement, contains('iq,'));
+    expect(measurement, contains('phase,'));
+    expect(measurement, contains('accessLevel.name'));
   });
 
   test('6. acquisition lifecycle has start, stop and dispose cleanup paths', () {
