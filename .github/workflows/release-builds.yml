@@ -1,0 +1,86 @@
+name: Release Builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  android-apk:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Dependencies
+        run: flutter pub get
+      - name: Build APK
+        run: flutter build apk --release
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ish-tissuemap-fusion-android-apk
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+
+  windows-exe:
+    name: Windows EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Dependencies
+        run: flutter pub get
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+      - name: Build Windows
+        run: flutter build windows --release
+      - name: Package Windows build
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ish-tissuemap-fusion-windows-exe.zip -Force
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ish-tissuemap-fusion-windows-exe
+          path: ish-tissuemap-fusion-windows-exe.zip
+          if-no-files-found: error
+
+  ios-ipa:
+    name: iOS IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Dependencies
+        run: flutter pub get
+      - name: Check iOS project
+        run: test -f ios/Runner.xcodeproj/project.pbxproj
+      - name: Build iOS without code signing
+        run: flutter build ios --release --no-codesign
+      - name: Package iOS app
+        run: mkdir -p Payload && cp -R build/ios/iphoneos/Runner.app Payload/Runner.app && zip -r ish-tissuemap-fusion-ios-unsigned.ipa Payload
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ish-tissuemap-fusion-ios-ipa-unsigned
+          path: ish-tissuemap-fusion-ios-unsigned.ipa
+          if-no-files-found: error
