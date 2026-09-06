@@ -1,4 +1,4 @@
-import '../models/body_scan.dart';
+import 'visual_inertial_fusion_engine.dart';
 import 'visual_motion_estimator.dart';
 
 /// Runtime visual-pose capability. Implementations must return only measured
@@ -26,10 +26,7 @@ class UnavailableVisualPoseBackend implements VisualPoseBackend {
   bool get available => false;
 
   @override
-  Future<VisualPoseObservation?> observe({
-    required int timestampMicros,
-    required VisualMotionObservation motion,
-  }) async => null;
+  Future<VisualPoseObservation?> observe({required int timestampMicros, required VisualMotionObservation motion}) async => null;
 
   @override
   Future<void> start() async {}
@@ -38,8 +35,6 @@ class UnavailableVisualPoseBackend implements VisualPoseBackend {
   Future<void> stop() async {}
 }
 
-/// Runtime-selected backend registry. Device support is discovered at runtime;
-/// no platform or manufacturer is assumed to provide metric visual pose.
 class VisualPoseBackendRegistry {
   final List<VisualPoseBackend> backends;
 
