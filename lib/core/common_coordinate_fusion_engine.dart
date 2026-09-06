@@ -6,8 +6,8 @@ import '../models/body_scan.dart';
 import '../models/rf_measurement.dart';
 import 'rf_spatial_mapper.dart';
 
-/// Keeps metric pose, non-metric optical motion and RF observations in one
-/// coordinate-fusion state without inventing a pixel-to-meter scale.
+/// Keeps estimated metric pose, non-metric optical motion and RF observations
+/// in one coordinate state without inventing a pixel-to-meter scale.
 class CommonCoordinateFusionState {
   final ScanPose? metricPose;
   final double opticalDxPixels;
@@ -55,6 +55,8 @@ class CommonCoordinateFusionEngine {
   final RfSpatialMapper rfMapper;
 
   ScanPose? _metricPose;
+  bool _hasMeasuredPose = false;
+  bool _hasReferenceOrigin = false;
   double _opticalDx = 0;
   double _opticalDy = 0;
   double _opticalQuality = 0;
@@ -73,7 +75,7 @@ class CommonCoordinateFusionEngine {
 
   CommonCoordinateFusionState get state {
     final pose = _metricPose;
-    final poseQuality = pose?.quality ?? 0;
+    final poseQuality = _hasMeasuredPose ? (pose?.quality ?? 0) : 0;
     final opticalQuality = _opticalQuality;
     final quality = math.max(poseQuality, opticalQuality * visualWeight).clamp(0.0, 1.0).toDouble();
     return CommonCoordinateFusionState(
@@ -85,13 +87,19 @@ class CommonCoordinateFusionEngine {
       opticalObservationCount: _opticalCount,
       rfObservationCount: _rfCount,
       coordinateQuality: quality,
-      positionUncertaintyMeters: pose == null ? double.infinity : _poseUncertaintyMeters(pose),
-      provenance: _provenance(pose),
+      positionUncertaintyMeters: _hasMeasuredPose && pose != null
+          ? _poseUncertaintyMeters(pose)
+          : double.infinity,
+      provenance: _provenance(),
     );
   }
 
+  /// Resets the coordinate frame. [anchor] is only a reference origin until a
+  /// real metric pose is accepted by addMeasuredPose().
   void reset({ScanPose? anchor}) {
     _metricPose = anchor;
+    _hasMeasuredPose = false;
+    _hasReferenceOrigin = anchor != null;
     _opticalDx = 0;
     _opticalDy = 0;
     _opticalQuality = 0;
@@ -102,10 +110,13 @@ class CommonCoordinateFusionEngine {
     if (anchor != null) poseHistory.add(anchor);
   }
 
-  /// Adds an already metric, measured pose. No visual scale conversion occurs.
+  /// Adds a metric pose estimated from real inertial/metric tracking.
+  /// It is not a measurement of internal anatomy.
   bool addMeasuredPose(ScanPose pose) {
     if (!_validPose(pose) || pose.quality < minimumPoseQuality) return false;
     _metricPose = pose;
+    _hasMeasuredPose = true;
+    _hasReferenceOrigin = false;
     poseHistory.add(pose);
     return true;
   }
@@ -123,9 +134,9 @@ class CommonCoordinateFusionEngine {
     return true;
   }
 
-  /// Associates a real RF observation with the closest measured metric pose.
+  /// Associates a real RF observation with a real/estimated metric pose.
   bool addRfMeasurement(RfMeasurement measurement) {
-    if (!measurement.isUsable || measurement.rssiDbm == null) return false;
+    if (!measurement.isUsable || measurement.rssiDbm == null || !_hasMeasuredPose) return false;
     final pose = poseHistory.interpolate(measurement.timestampMicros, minimumQuality: minimumPoseQuality);
     if (pose == null) return false;
     rfMapper.add(
@@ -161,19 +172,20 @@ class CommonCoordinateFusionEngine {
       pose.quality.isFinite && pose.quality > 0;
 
   double _poseUncertaintyMeters(ScanPose pose) {
-    // Quality is a confidence indicator, not a manufactured physical error bar.
-    // Keep this conservative and explicitly marked as an engineering estimate.
+    // Engineering confidence estimate, not a measured physical error bar.
     return (1.0 - pose.quality).clamp(0.0, 1.0).toDouble();
   }
 
   double _poseUncertaintyDb(ScanPose pose) => 1.0 + _poseUncertaintyMeters(pose) * 5.0;
 
-  String _provenance(ScanPose? pose) {
-    if (pose != null && _rfCount > 0 && _opticalCount > 0) return 'MEASURED_IMU_POSE_PLUS_OPTICAL_CONSTRAINT_PLUS_RF';
-    if (pose != null && _rfCount > 0) return 'MEASURED_IMU_POSE_PLUS_RF';
-    if (pose != null && _opticalCount > 0) return 'MEASURED_IMU_POSE_PLUS_NON_METRIC_OPTICAL';
-    if (pose != null) return 'MEASURED_INERTIAL_POSE';
+  String _provenance() {
+    if (_hasMeasuredPose && _rfCount > 0 && _opticalCount > 0) return 'ESTIMATED_METRIC_POSE_PLUS_OPTICAL_CONSTRAINT_PLUS_RF';
+    if (_hasMeasuredPose && _rfCount > 0) return 'ESTIMATED_METRIC_POSE_PLUS_RF';
+    if (_hasMeasuredPose && _opticalCount > 0) return 'ESTIMATED_METRIC_POSE_PLUS_NON_METRIC_OPTICAL';
+    if (_hasMeasuredPose) return 'ESTIMATED_METRIC_POSE_FROM_PHONE_SENSORS';
+    if (_opticalCount > 0 && _hasReferenceOrigin) return 'REFERENCE_ORIGIN_PLUS_NON_METRIC_OPTICAL';
     if (_opticalCount > 0) return 'NON_METRIC_OPTICAL_ONLY';
+    if (_hasReferenceOrigin) return 'REFERENCE_ORIGIN_ONLY';
     return 'NO_MEASURED_COORDINATE_DATA';
   }
 }
