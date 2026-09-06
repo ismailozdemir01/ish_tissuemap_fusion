@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import '../models/imaging_pipeline.dart';
-import '../core/sensor_capability.dart';
+import 'sensor_capability.dart';
 
 class AcquisitionSession {
   final List<PhoneSensor> sensors;
@@ -20,15 +20,32 @@ class AcquisitionSession {
     _running = true;
     try {
       for (final sensor in sensors) {
-        await sensor.start();
-        _subscriptions.add(sensor.samples.listen(_controller.add, onError: _controller.addError));
+        // Subscribe before starting the sensor so synchronous first emissions
+        // cannot be lost during startup.
+        final subscription = sensor.samples.listen(
+          _controller.add,
+          onError: _controller.addError,
+        );
+        _subscriptions.add(subscription);
+        try {
+          await sensor.start();
+        } catch (_) {
+          await subscription.cancel();
+          _subscriptions.remove(subscription);
+          rethrow;
+        }
       }
+
       for (final device in devices) {
         await device.connect();
         if (!device.connected) {
           throw StateError('ACQUISITION_DEVICE_NOT_CONNECTED:${device.deviceId}');
         }
-        _subscriptions.add(device.acquire().listen(_controller.add, onError: _controller.addError));
+        final subscription = device.acquire().listen(
+          _controller.add,
+          onError: _controller.addError,
+        );
+        _subscriptions.add(subscription);
       }
     } catch (_) {
       await stop();
@@ -39,7 +56,7 @@ class AcquisitionSession {
   Future<void> stop() async {
     if (!_running && _subscriptions.isEmpty) return;
     _running = false;
-    for (final subscription in _subscriptions) {
+    for (final subscription in List<StreamSubscription<RawSignalSample>>.from(_subscriptions)) {
       await subscription.cancel();
     }
     _subscriptions.clear();
