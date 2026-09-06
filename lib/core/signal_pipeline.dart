@@ -43,7 +43,7 @@ class SignalProcessingPipeline {
         timestampMicros: current.timestampMicros,
         values: filtered,
         unit: current.unit,
-        quality: current.quality.clamp(0.0, 1.0),
+        quality: current.quality.clamp(0.0, 1.0).toDouble(),
       ));
     }
     return List.unmodifiable(result);
