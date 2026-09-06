@@ -1,4 +1,5 @@
 import '../../models/measurement_result.dart';
+import '../../models/measurement_status.dart';
 import 'emergency_state.dart';
 
 class EmergencyEngine {
