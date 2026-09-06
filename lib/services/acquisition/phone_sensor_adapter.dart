@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:sensors_plus/sensors_plus.dart';
 
@@ -18,10 +17,16 @@ abstract class _SensorsPlusPhoneSensor implements PhoneSensor {
   Future<void> start() async {
     if (_started) return;
     _started = true;
-    _subscription = createStream().listen((event) {
-      final sample = mapEvent(event);
-      if (sample != null && !_controller.isClosed) _controller.add(sample);
-    });
+    try {
+      _subscription = createStream().listen((event) {
+        final sample = mapEvent(event);
+        if (sample != null && !_controller.isClosed) _controller.add(sample);
+      }, onError: _controller.addError);
+    } catch (error, stack) {
+      _started = false;
+      if (!_controller.isClosed) _controller.addError(error, stack);
+      rethrow;
+    }
   }
 
   Stream<dynamic> createStream();
@@ -127,35 +132,6 @@ class PhoneGyroscopeSensor extends _SensorsPlusPhoneSensor {
   }
 }
 
-class PhoneBarometerSensor extends _SensorsPlusPhoneSensor {
-  @override
-  SensorCapability get capability => const SensorCapability(
-        id: 'phone.barometer',
-        name: 'Phone Barometer',
-        modality: SignalModality.external,
-        availability: SensorAvailability.available,
-        units: ['hPa'],
-      );
-
-  @override
-  Stream<dynamic> createStream() => barometerEventStream();
-
-  @override
-  RawSignalSample? mapEvent(dynamic event) {
-    final e = event as BarometerEvent;
-    final pressure = e.pressure;
-    if (!pressure.isFinite) return null;
-    return RawSignalSample(
-      sensorId: capability.id,
-      modality: capability.modality,
-      timestampMicros: DateTime.now().microsecondsSinceEpoch,
-      values: [pressure],
-      unit: 'hPa',
-      quality: 1.0,
-    );
-  }
-}
-
 class PhoneSensorRegistry {
   final List<PhoneSensor> sensors;
 
@@ -164,16 +140,11 @@ class PhoneSensorRegistry {
           PhoneMagnetometerSensor(),
           PhoneAccelerometerSensor(),
           PhoneGyroscopeSensor(),
-          PhoneBarometerSensor(),
         ]);
 
   Future<void> startAll() async {
     for (final sensor in sensors) {
-      try {
-        await sensor.start();
-      } catch (_) {
-        // Availability is surfaced by the platform stream; no synthetic fallback is allowed.
-      }
+      await sensor.start();
     }
   }
 
@@ -183,9 +154,7 @@ class PhoneSensorRegistry {
     }
   }
 
-  Stream<RawSignalSample> get samples => sensors.expand((s) => [s.samples]).isEmpty
-      ? const Stream.empty()
-      : StreamGroupMerge.merge(sensors.map((s) => s.samples));
+  Stream<RawSignalSample> get samples => StreamGroupMerge.merge(sensors.map((s) => s.samples));
 }
 
 /// Minimal stream merge without adding another dependency.
