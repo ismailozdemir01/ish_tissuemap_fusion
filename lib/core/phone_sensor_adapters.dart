@@ -12,7 +12,7 @@ abstract class _StreamPhoneSensor implements PhoneSensor {
   @override
   Stream<RawSignalSample> get samples => _controller.stream;
 
-  void listenTo(Stream<dynamic> source, RawSignalSample Function(dynamic event) map) {
+  void listenTo<T>(Stream<T> source, RawSignalSample Function(T event) map) {
     _subscription?.cancel();
     _subscription = source.listen((event) => _controller.add(map(event)), onError: _controller.addError);
   }
