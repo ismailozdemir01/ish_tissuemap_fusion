@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../models/body_scan.dart';
 
 class BodyScanEngine {
@@ -39,7 +41,7 @@ class BodyScanEngine {
       final dx = b.x - a.x;
       final dy = b.y - a.y;
       final dz = b.z - a.z;
-      path += (dx * dx + dy * dy + dz * dz);
+      path += math.sqrt(dx * dx + dy * dy + dz * dz);
     }
     return ScanCoverage(
       acquiredRegions: Set.unmodifiable(regions),
