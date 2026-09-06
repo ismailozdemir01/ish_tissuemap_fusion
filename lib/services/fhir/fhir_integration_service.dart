@@ -2,87 +2,71 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:ish_tissuemap_fusion/models/chronos_snapshot.dart';
 
-/// FHIR (Fast Healthcare Interoperability Resources) entegrasyonu.
-/// Sağlık verilerini hastanelerle paylaşmak için standart API.
 class FhirIntegrationService {
-  final String _baseUrl = 'https://your-fhir-server.com/fhir';
+  final Uri baseUrl;
+  final String? accessToken;
+  final String observationCodeSystem;
+  final String observationCode;
+  final String observationDisplay;
 
-  /// Kullanıcının hastane kayıtlarını getirir (FHIR Patient ve Observation).
-  Future<Map<String, dynamic>> fetchPatientRecord(String patientId) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/Patient/$patientId'),
-        headers: {'Authorization': 'Bearer YOUR_ACCESS_TOKEN'},
-      );
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        return {'error': 'Kayıt bulunamadı'};
-      }
-    } catch (e) {
-      return {'error': 'Bağlantı hatası: $e'};
-    }
-  }
+  FhirIntegrationService({
+    required String baseUrl,
+    this.accessToken,
+    required this.observationCodeSystem,
+    required this.observationCode,
+    required this.observationDisplay,
+  }) : baseUrl = Uri.parse(baseUrl);
 
-  /// ISH tarama verisini FHIR Observation kaynağına dönüştürür ve gönderir.
-  Future<bool> sendScanToFhir(ChronosSnapshot snapshot, String patientId) async {
-    try {
-      // Observation JSON'u oluştur
-      final observation = {
-        'resourceType': 'Observation',
-        'status': 'final',
-        'category': [
-          {'coding': [{'system': 'http://terminology.hl7.org/CodeSystem/observation-category', 'code': 'exam'}]}
-        ],
-        'code': {
-          'coding': [
-            {
-              'system': 'http://loinc.org',
-              'code': '87162-2',
-              'display': 'Doku yoğunluk indeksi'
-            }
-          ]
-        },
-        'subject': {'reference': 'Patient/$patientId'},
-        'effectiveDateTime': snapshot.timestamp.toIso8601String(),
-        'valueQuantity': {
-          'value': snapshot.averageFusionScore,
-          'unit': '0-1 skalası',
-          'system': 'http://unitsofmeasure.org',
-          'code': '{score}'
-        },
-        'note': [
-          {'text': 'ISH TissueMap Fusion taraması sonucu'}
-        ],
-        'component': snapshot.pointData.take(10).map((p) {
-          return {
-            'code': {'coding': [{'system': 'http://loinc.org', 'code': '87162-2'}]},
-            'valueQuantity': {
-              'value': p['fusionScore'],
-              'unit': '0-1 skalası'
-            }
-          };
-        }).toList(),
+  Map<String, String> get _headers => {
+        'Accept': 'application/fhir+json',
+        'Content-Type': 'application/fhir+json',
+        if (accessToken != null && accessToken!.isNotEmpty)
+          'Authorization': 'Bearer $accessToken',
       };
 
-      final response = await http.post(
-        Uri.parse('$_baseUrl/Observation'),
-        headers: {
-          'Content-Type': 'application/fhir+json',
-          'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
-        },
-        body: json.encode(observation),
-      );
-
-      return response.statusCode == 201;
-    } catch (e) {
-      print('FHIR gönderme hatası: $e');
-      return false;
+  Future<Map<String, dynamic>> fetchPatientRecord(String patientId) async {
+    final response = await http.get(
+      baseUrl.resolve('Patient/${Uri.encodeComponent(patientId)}'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw StateError('FHIR Patient request failed: ${response.statusCode}');
     }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  /// Doktorla veri paylaşımı için kısa link oluşturur (demo).
-  String createShareLink(String scanId) {
-    return 'https://ish.app/share/$scanId';
+  Future<Map<String, dynamic>> sendScanToFhir(
+    ChronosSnapshot snapshot,
+    String patientId,
+  ) async {
+    final observation = <String, dynamic>{
+      'resourceType': 'Observation',
+      'status': 'final',
+      'code': {
+        'coding': [
+          {
+            'system': observationCodeSystem,
+            'code': observationCode,
+            'display': observationDisplay,
+          }
+        ]
+      },
+      'subject': {'reference': 'Patient/$patientId'},
+      'effectiveDateTime': snapshot.timestamp.toUtc().toIso8601String(),
+      'valueQuantity': {
+        'value': snapshot.averageFusionScore,
+        'unit': 'score',
+      },
+    };
+
+    final response = await http.post(
+      baseUrl.resolve('Observation'),
+      headers: _headers,
+      body: jsonEncode(observation),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw StateError('FHIR Observation request failed: ${response.statusCode}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 }
