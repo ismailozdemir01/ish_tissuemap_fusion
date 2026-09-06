@@ -1,25 +1,23 @@
-import 'package:camera/camera.dart';
+import 'package:camera/camera.dart' as camera_api;
 
 import '../../models/optical_frame.dart';
 
 class OpticalCameraService {
-  CameraController? _controller;
-  CameraDescription? _description;
+  camera_api.CameraController? _controller;
+  camera_api.CameraDescription? _description;
 
-  CameraController? get controller => _controller;
+  camera_api.CameraController? get controller => _controller;
   bool get initialized => _controller?.value.isInitialized == true;
 
-  Future<List<CameraDescription>> availableCameras() => availableCameras();
+  Future<List<camera_api.CameraDescription>> availableCameras() => camera_api.availableCameras();
 
-  Future<void> initialize({CameraDescription? camera, ResolutionPreset preset = ResolutionPreset.high}) async {
-    final cameras = await availableCameras();
-    if (cameras.isEmpty && camera == null) {
-      throw StateError('CAMERA_UNAVAILABLE');
-    }
+  Future<void> initialize({camera_api.CameraDescription? camera, camera_api.ResolutionPreset preset = camera_api.ResolutionPreset.high}) async {
+    final cameras = await camera_api.availableCameras();
+    if (cameras.isEmpty && camera == null) throw StateError('CAMERA_UNAVAILABLE');
     final selected = camera ?? cameras.first;
     await _controller?.dispose();
     _description = selected;
-    final controller = CameraController(selected, preset, enableAudio: false);
+    final controller = camera_api.CameraController(selected, preset, enableAudio: false);
     await controller.initialize();
     _controller = controller;
   }
