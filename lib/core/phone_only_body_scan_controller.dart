@@ -13,6 +13,7 @@ import '../services/acquisition/visual_tracking_service.dart';
 import '../services/acquisition/wifi_rf_service.dart';
 import 'acquisition_session.dart';
 import 'body_scan_engine.dart';
+import 'common_coordinate_fusion_engine.dart';
 import 'optical_registration_engine.dart';
 import 'phone_sensor_adapters.dart';
 import 'pose_history.dart';
@@ -30,6 +31,7 @@ class PhoneOnlyBodyScanController {
     RfSpatialMapper? rfMapper,
     PoseHistory? poseHistory,
     OpticalRegistrationEngine? opticalRegistration,
+    CommonCoordinateFusionEngine? coordinateFusion,
   })  : acquisition = acquisition ?? AcquisitionSession(sensors: PhoneSensorRegistry.defaults().sensors),
         rf = rf ?? WifiRfService(),
         camera = camera ?? OpticalCameraService(),
@@ -37,7 +39,8 @@ class PhoneOnlyBodyScanController {
         bodyScan = bodyScan ?? BodyScanEngine(minimumPoseQuality: 0.25),
         rfMapper = rfMapper ?? RfSpatialMapper(),
         poseHistory = poseHistory ?? PoseHistory(),
-        opticalRegistration = opticalRegistration ?? const OpticalRegistrationEngine();
+        opticalRegistration = opticalRegistration ?? const OpticalRegistrationEngine(),
+        coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine();
 
   final AcquisitionSession acquisition;
   final WifiRfService rf;
@@ -47,6 +50,7 @@ class PhoneOnlyBodyScanController {
   final RfSpatialMapper rfMapper;
   final PoseHistory poseHistory;
   final OpticalRegistrationEngine opticalRegistration;
+  final CommonCoordinateFusionEngine coordinateFusion;
 
   final StreamController<SpatialAcquisitionSample> _samples = StreamController.broadcast();
   final StreamController<OpticalFrame> _frames = StreamController.broadcast();
@@ -71,6 +75,7 @@ class PhoneOnlyBodyScanController {
   bool get running => _running;
   ScanPose get pose => _pose;
   ScanCoverage get coverage => bodyScan.coverage();
+  CommonCoordinateFusionState get coordinateState => coordinateFusion.state;
 
   Future<void> start({BodyRegion? region, bool initializeCamera = true}) async {
     if (_running) return;
@@ -84,6 +89,7 @@ class PhoneOnlyBodyScanController {
     _lastAccelerationMicros = null;
     poseHistory.clear();
     poseHistory.add(_pose);
+    coordinateFusion.reset(anchor: _pose);
     visualTracking.start();
     try {
       if (initializeCamera) {
@@ -117,6 +123,8 @@ class PhoneOnlyBodyScanController {
       if (registered != null) _registeredFrames.add(registered);
       final tracking = await visualTracking.process(frame);
       _visualResults.add(tracking);
+      final motion = tracking.motion;
+      if (motion != null) coordinateFusion.addVisualMotion(motion);
       return frame;
     } catch (_) {
       return null;
@@ -169,6 +177,7 @@ class PhoneOnlyBodyScanController {
       ),
       measurement,
     );
+    coordinateFusion.addRfMeasurement(measurement);
     _emitSpatial(RawSignalSample(
       sensorId: 'phone.wifi.rf',
       modality: SignalModality.radioFrequency,
@@ -234,6 +243,7 @@ class PhoneOnlyBodyScanController {
       quality: _poseQuality(now),
     );
     poseHistory.add(_pose);
+    coordinateFusion.addMeasuredPose(_pose);
   }
 
   void _updatePoseSnapshot(int timestampMicros) {
@@ -249,6 +259,7 @@ class PhoneOnlyBodyScanController {
       quality: _poseQuality(timestampMicros),
     );
     poseHistory.add(_pose);
+    coordinateFusion.addMeasuredPose(_pose);
   }
 
   void _emitSpatial(RawSignalSample signal, {required ScanPose pose}) {
