@@ -1,25 +1,30 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:sensors_plus/sensors_plus.dart';
 
+/// Raw phone magnetometer telemetry. It is intentionally not converted into
+/// tissue conductivity because that conversion is not clinically validated.
 class EMFService {
-  double _currentMicroTesla = 50.0;
+  double _currentMicroTesla = 0;
   final List<double> _history = [];
+  StreamSubscription<MagnetometerEvent>? _subscription;
 
-  void startListening(Function(double) onData) {
-    magnetometerEvents.listen((MagnetometerEvent event) {
-      double magnitude =
-          sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
-
+  void startListening(void Function(double rawMicroTesla) onData) {
+    _subscription?.cancel();
+    _subscription = magnetometerEventStream().listen((event) {
+      final magnitude = sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
+      if (!magnitude.isFinite) return;
       _history.add(magnitude);
       if (_history.length > 20) _history.removeAt(0);
-
-      double avg = _history.reduce((a, b) => a + b) / _history.length;
-      _currentMicroTesla = avg;
-
-      double conductivityIndex = ((avg - 45).abs() / 15).clamp(0.0, 1.0);
-      onData(conductivityIndex);
+      _currentMicroTesla = _history.reduce((a, b) => a + b) / _history.length;
+      onData(_currentMicroTesla);
     });
   }
 
   double get currentValue => _currentMicroTesla;
+
+  Future<void> dispose() async {
+    await _subscription?.cancel();
+    _subscription = null;
+  }
 }
