@@ -7,20 +7,22 @@ import 'tissue_volume_reconstruction_engine.dart';
 abstract class RfTissueCalibration {
   String get calibrationId;
   bool get validated;
-
-  /// Sensitivity of one voxel property unit at the supplied frequency.
   double sensitivity(double frequencyMHz);
-
-  /// Effective attenuation coefficient for the calibrated medium.
   double attenuationNpPerMeter(double frequencyMHz);
+  double? referenceRssiDbm(double frequencyMHz);
+}
+
+/// Provides the measured reference required to convert raw RSSI to a
+/// propagation residual. A residual must never be invented from the scan.
+abstract class RfReferenceProvider {
+  double? referenceRssiDbm(double frequencyMHz);
 }
 
 /// Software forward operator for the phone-only RF inverse problem.
-///
-/// The operator maps a voxel property contrast to a predicted measurement
-/// residual. Geometry comes from the phone trajectory; material response comes
-/// only from an explicitly supplied calibration object.
-class PhoneRfTissueForwardModel implements ValidatedTissueForwardModel {
+/// Geometry comes from the phone trajectory; material response comes only
+/// from an explicitly supplied calibration object.
+class PhoneRfTissueForwardModel
+    implements ValidatedTissueForwardModel, RfReferenceProvider {
   @override
   final String modelId;
   final RfTissueCalibration calibration;
@@ -39,6 +41,10 @@ class PhoneRfTissueForwardModel implements ValidatedTissueForwardModel {
 
   @override
   bool get validated => calibration.validated;
+
+  @override
+  double? referenceRssiDbm(double frequencyMHz) =>
+      calibration.referenceRssiDbm(frequencyMHz);
 
   @override
   List<List<double>> buildForwardMatrix({
@@ -71,8 +77,10 @@ class PhoneRfTissueForwardModel implements ValidatedTissueForwardModel {
         final dx = voxel[0] - source[0];
         final dy = voxel[1] - source[1];
         final dz = voxel[2] - source[2];
-        final distance = math.max(minimumDistanceMeters,
-            math.sqrt(dx * dx + dy * dy + dz * dz));
+        final distance = math.max(
+          minimumDistanceMeters,
+          math.sqrt(dx * dx + dy * dy + dz * dz),
+        );
         final path = distance * pathLengthScale;
         final geometric = 1.0 / distance;
         final medium = math.exp(-attenuation * path);
