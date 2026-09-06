@@ -1,6 +1,7 @@
 import '../models/body_scan.dart';
 import '../models/imaging_pipeline.dart';
 import '../models/tissue_volume.dart';
+import 'rf_scan_quality_gate.dart';
 import 'rf_tissue_forward_model.dart';
 import 'rf_voxel_grid.dart';
 import 'tissue_volume_reconstruction_engine.dart';
@@ -12,9 +13,11 @@ import 'tissue_volume_reconstruction_engine.dart';
 /// they are never converted into invented internal tissue values.
 class PhoneOnlyTissueImagingPipeline {
   final TissueVolumeReconstructionEngine reconstruction;
+  final RfScanQualityGate qualityGate;
 
   const PhoneOnlyTissueImagingPipeline({
     this.reconstruction = const TissueVolumeReconstructionEngine(),
+    this.qualityGate = const RfScanQualityGate(),
   });
 
   TissueVolume3D reconstruct({
@@ -39,13 +42,22 @@ class PhoneOnlyTissueImagingPipeline {
         sample.signal.frequencyMHz != null &&
         sample.signal.frequencyMHz!.isFinite &&
         sample.signal.frequencyMHz! > 0 &&
-        sample.pose.x.isFinite && sample.pose.y.isFinite && sample.pose.z.isFinite &&
+        sample.pose.x.isFinite &&
+        sample.pose.y.isFinite &&
+        sample.pose.z.isFinite &&
+        sample.signal.quality.isFinite &&
         sample.signal.quality > 0).toList();
 
     if (samples.isEmpty) {
       return TissueVolume3D.unknown(reason: 'NO_REAL_PHONE_RF_OBSERVATIONS');
     }
 
+    final assessment = qualityGate.assess(samples);
+    if (!assessment.accepted) {
+      return TissueVolume3D.unknown(reason: assessment.reason);
+    }
+
+    final calibration = model as RfReferenceProvider;
     final frequencies = <double>[];
     final measurementCoordinates = <List<double>>[];
     final observations = <double>[];
@@ -53,7 +65,7 @@ class PhoneOnlyTissueImagingPipeline {
 
     for (final sample in samples) {
       final frequency = sample.signal.frequencyMHz!;
-      final reference = (model as RfReferenceProvider).referenceRssiDbm(frequency);
+      final reference = calibration.referenceRssiDbm(frequency);
       if (reference == null || !reference.isFinite) {
         return TissueVolume3D.unknown(reason: 'RF_REFERENCE_NOT_CALIBRATED');
       }
