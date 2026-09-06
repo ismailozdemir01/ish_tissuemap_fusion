@@ -12,6 +12,7 @@ import '../services/acquisition/wifi_rf_service.dart';
 import 'acquisition_session.dart';
 import 'body_scan_engine.dart';
 import 'phone_sensor_adapters.dart';
+import 'pose_history.dart';
 import 'rf_spatial_mapper.dart';
 
 /// Coordinates real phone-only acquisition with explicit inertial uncertainty.
@@ -23,17 +24,20 @@ class PhoneOnlyBodyScanController {
     OpticalCameraService? camera,
     BodyScanEngine? bodyScan,
     RfSpatialMapper? rfMapper,
+    PoseHistory? poseHistory,
   })  : acquisition = acquisition ?? AcquisitionSession(sensors: PhoneSensorRegistry.defaults().sensors),
         rf = rf ?? WifiRfService(),
         camera = camera ?? OpticalCameraService(),
         bodyScan = bodyScan ?? BodyScanEngine(minimumPoseQuality: 0.25),
-        rfMapper = rfMapper ?? RfSpatialMapper();
+        rfMapper = rfMapper ?? RfSpatialMapper(),
+        poseHistory = poseHistory ?? PoseHistory();
 
   final AcquisitionSession acquisition;
   final WifiRfService rf;
   final OpticalCameraService camera;
   final BodyScanEngine bodyScan;
   final RfSpatialMapper rfMapper;
+  final PoseHistory poseHistory;
 
   final StreamController<SpatialAcquisitionSample> _samples = StreamController.broadcast();
   final StreamController<OpticalFrame> _frames = StreamController.broadcast();
@@ -43,7 +47,8 @@ class PhoneOnlyBodyScanController {
   Vector3 _velocity = Vector3.zero();
   Quaternion _orientation = Quaternion.identity();
   Vector3? _lastAcceleration;
-  int? _lastInertialMicros;
+  int? _lastGyroMicros;
+  int? _lastAccelerationMicros;
   int? _startedAtMicros;
   bool _running = false;
   BodyRegion? _region;
@@ -62,7 +67,10 @@ class PhoneOnlyBodyScanController {
     _velocity = Vector3.zero();
     _orientation = Quaternion.identity();
     _lastAcceleration = null;
-    _lastInertialMicros = null;
+    _lastGyroMicros = null;
+    _lastAccelerationMicros = null;
+    poseHistory.clear();
+    poseHistory.add(_pose);
     try {
       if (initializeCamera) {
         try {
@@ -117,13 +125,13 @@ class PhoneOnlyBodyScanController {
     if (!_running) return;
     if (sample.values.length < 3 || !sample.values.every((v) => v.isFinite)) return;
     if (sample.modality == SignalModality.inertial) _updatePose(sample);
-    _emitSpatial(sample);
+    _emitSpatial(sample, pose: poseHistory.nearest(sample.timestampMicros) ?? _pose);
   }
 
   void _onRfMeasurement(RfMeasurement measurement) {
     if (!_running || !measurement.isUsable) return;
-    final pose = _pose;
-    if (pose.quality < 0.25 || measurement.rssiDbm == null) return;
+    final pose = poseHistory.interpolate(measurement.timestampMicros, minimumQuality: 0.25);
+    if (pose == null || measurement.rssiDbm == null) return;
     rfMapper.add(
       RfSpatialPoint(
         x: pose.x,
@@ -143,36 +151,42 @@ class PhoneOnlyBodyScanController {
       values: [measurement.rssiDbm!],
       unit: 'dBm',
       quality: measurement.quality,
-    ));
+    ), pose: pose);
   }
 
   void _updatePose(RawSignalSample sample) {
     final now = sample.timestampMicros;
-    final previous = _lastInertialMicros;
-    if (previous == null) {
-      _lastInertialMicros = now;
-      if (sample.sensorId.contains('accelerometer')) _lastAcceleration = Vector3.array(sample.values);
-      return;
-    }
-    final dt = (now - previous) / 1000000.0;
-    if (dt <= 0 || dt > 0.25) {
-      _lastInertialMicros = now;
-      return;
-    }
-    _lastInertialMicros = now;
-
     if (sample.sensorId.contains('gyroscope')) {
+      final previous = _lastGyroMicros;
+      _lastGyroMicros = now;
+      if (previous == null) return;
+      final dt = (now - previous) / 1000000.0;
+      if (dt <= 0 || dt > 0.25) return;
       final omega = Vector3.array(sample.values);
       final angle = omega.length * dt;
       if (angle.isFinite && angle > 0 && omega.length > 0) {
         final dq = Quaternion.axisAngle(omega.normalized(), angle);
         _orientation = (_orientation * dq)..normalize();
+        _updatePoseSnapshot(now);
       }
       return;
     }
 
     if (!sample.sensorId.contains('accelerometer')) return;
+    final previous = _lastAccelerationMicros;
+    _lastAccelerationMicros = now;
     final bodyAcceleration = Vector3.array(sample.values);
+    if (previous == null) {
+      _lastAcceleration = bodyAcceleration;
+      _updatePoseSnapshot(now);
+      return;
+    }
+    final dt = (now - previous) / 1000000.0;
+    if (dt <= 0 || dt > 0.25) {
+      _lastAcceleration = bodyAcceleration;
+      return;
+    }
+
     final worldAcceleration = _orientation.rotated(bodyAcceleration);
     final linear = worldAcceleration - Vector3(0, 0, 9.80665);
     final previousAcceleration = _lastAcceleration;
@@ -194,21 +208,25 @@ class PhoneOnlyBodyScanController {
       qw: _orientation.w,
       quality: _poseQuality(now),
     );
+    poseHistory.add(_pose);
   }
 
-  void _emitSpatial(RawSignalSample signal) {
-    final timestamp = signal.timestampMicros > _pose.timestampMicros ? signal.timestampMicros : _pose.timestampMicros;
-    final pose = ScanPose(
-      timestampMicros: timestamp,
+  void _updatePoseSnapshot(int timestampMicros) {
+    _pose = ScanPose(
+      timestampMicros: timestampMicros,
       x: _pose.x,
       y: _pose.y,
       z: _pose.z,
-      qx: _pose.qx,
-      qy: _pose.qy,
-      qz: _pose.qz,
-      qw: _pose.qw,
-      quality: _pose.quality,
+      qx: _orientation.x,
+      qy: _orientation.y,
+      qz: _orientation.z,
+      qw: _orientation.w,
+      quality: _poseQuality(timestampMicros),
     );
+    poseHistory.add(_pose);
+  }
+
+  void _emitSpatial(RawSignalSample signal, {required ScanPose pose}) {
     final spatial = SpatialAcquisitionSample(signal: signal, pose: pose, region: _region);
     try {
       bodyScan.add(spatial);
