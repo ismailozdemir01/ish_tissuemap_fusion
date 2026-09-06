@@ -73,9 +73,9 @@ class MagnetometerPhoneSensor extends _StreamPhoneSensor {
 
 class PhoneSensorRegistry {
   final List<PhoneSensor> sensors;
-  const PhoneSensorRegistry(this.sensors);
+  PhoneSensorRegistry(this.sensors);
 
-  static PhoneSensorRegistry defaults() => PhoneSensorRegistry(const [
+  factory PhoneSensorRegistry.defaults() => PhoneSensorRegistry([
     AccelerometerPhoneSensor(), GyroscopePhoneSensor(), MagnetometerPhoneSensor(),
   ]);
 }
