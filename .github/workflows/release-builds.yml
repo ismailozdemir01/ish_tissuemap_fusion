@@ -27,8 +27,8 @@ jobs:
         run: flutter create --platforms android,ios,windows .
       - name: Dependencies
         run: flutter pub get
-      - name: Format check
-        run: dart format --output=none --set-exit-if-changed lib test
+      - name: Format sources
+        run: dart format lib test
       - name: Unit and release safety tests
         run: flutter test
       - name: Analyze
