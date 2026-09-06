@@ -3,11 +3,9 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:ish_tissuemap_fusion/services/sensor/ar_guidance_service.dart';
 import 'package:ish_tissuemap_fusion/services/sensor/fusion_engine.dart';
-import 'package:ish_tissuemap_fusion/services/sensor/acoustic_service.dart';
 import 'package:ish_tissuemap_fusion/services/sensor/emf_service.dart';
 import 'package:ish_tissuemap_fusion/services/processing/motion_cancellation_service.dart';
 import 'package:ish_tissuemap_fusion/services/analysis/chronos_service.dart';
-import 'package:ish_tissuemap_fusion/models/tissue_point.dart';
 import 'package:ish_tissuemap_fusion/models/chronos_snapshot.dart';
 import 'package:ish_tissuemap_fusion/models/anomaly_report.dart';
 import 'package:ish_tissuemap_fusion/widgets/heatmap_painter.dart';
@@ -25,22 +23,19 @@ class ARScanScreen extends StatefulWidget {
 
 class _ARScanScreenState extends State<ARScanScreen> {
   final FusionEngine _engine = FusionEngine();
-  final AcousticService _acoustic = AcousticService();
   final EMFService _emf = EMFService();
   final MotionCancellationService _mac = MotionCancellationService();
   final ChronosService _chronos = ChronosService();
   final ARGuidanceService _ar = ARGuidanceService();
 
   bool _isScanning = false;
-  double _posX = 0.5, _posY = 0.5;
   Timer? _scanTimer;
-  final List<TissuePoint> _currentSessionPoints = [];
-  double _confidence = 0.0;
+  double _confidence = 0;
+  double _fieldMagnitude = 0;
 
   @override
   void initState() {
     super.initState();
-    _acoustic.init();
     _ar.initCamera();
     _emf.startListening((rawFieldMagnitude) {
       if (!_isScanning || !mounted) return;
@@ -49,21 +44,14 @@ class _ARScanScreenState extends State<ARScanScreen> {
         gyroscopeEvents.first.then((gyro) {
           if (!mounted || !_isScanning) return;
           final filtered = _mac.correct(rawFieldMagnitude, acc, gyro);
-          _confidence = _mac.getConfidenceScore();
-          _captureData(filtered);
+          if (mounted) {
+            setState(() {
+              _fieldMagnitude = filtered;
+              _confidence = _mac.getConfidenceScore();
+            });
+          }
         });
       });
-    });
-  }
-
-  Future<void> _captureData(double filteredFieldMagnitude) async {
-    // Phone magnetometer data is retained as raw sensor telemetry only.
-    // It is never converted into tissue density/conductivity without validation.
-    final estimatedPos = _ar.estimatePositionOnBody();
-    if (!mounted) return;
-    setState(() {
-      _posX = estimatedPos.x;
-      _posY = estimatedPos.y;
     });
   }
 
@@ -72,12 +60,12 @@ class _ARScanScreenState extends State<ARScanScreen> {
   Future<void> _stopAndSaveScan() async {
     setState(() => _isScanning = false);
     _scanTimer?.cancel();
-    if (_engine.points.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Doğrulanmış doku ölçümü bulunmadığı için kayıt oluşturulmadı.')),
-        );
-      }
+    if (_engine.points.isEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Telefon sensörleri yalnızca ham telemetri sağlıyor; doğrulanmış doku ölçümü kaydedilmedi.'),
+        ),
+      );
       return;
     }
 
@@ -90,14 +78,13 @@ class _ARScanScreenState extends State<ARScanScreen> {
           .toList(),
     );
     final avgScore = _engine.points.fold<double>(0, (s, p) => s + p.fusionScore) / _engine.points.length;
-    final snapshot = ChronosSnapshot(
+    await _chronos.saveCurrentScan(ChronosSnapshot(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       timestamp: DateTime.now(),
       pointData: _engine.points.map((p) => p.toJson()).toList(),
       report: report,
       averageFusionScore: avgScore,
-    );
-    await _chronos.saveCurrentScan(snapshot);
+    ));
   }
 
   @override
@@ -123,12 +110,9 @@ class _ARScanScreenState extends State<ARScanScreen> {
                 color: Colors.black,
                 child: Center(child: CircularProgressIndicator()),
               ),
-            Container(
-              margin: const EdgeInsets.all(10),
-              child: CustomPaint(
-                painter: HeatmapPainter(engine: _engine, opacity: 0.5),
-                size: Size.infinite,
-              ),
+            CustomPaint(
+              painter: HeatmapPainter(engine: _engine, opacity: 0.5),
+              size: Size.infinite,
             ),
             CustomPaint(
               painter: AROverlayPainter(
@@ -136,6 +120,21 @@ class _ARScanScreenState extends State<ARScanScreen> {
                 isScanning: _isScanning,
               ),
               size: Size.infinite,
+            ),
+            Positioned(
+              top: 20,
+              left: 20,
+              right: 20,
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(
+                    'Ham manyetik alan: ${_fieldMagnitude.toStringAsFixed(2)} µT\n'
+                    'Sinyal güveni: ${(_confidence * 100).toStringAsFixed(0)}%\n'
+                    'Klinik doku ölçümü: UNKNOWN',
+                  ),
+                ),
+              ),
             ),
             Positioned(
               bottom: 30,
@@ -156,18 +155,6 @@ class _ARScanScreenState extends State<ARScanScreen> {
                     label: const Text('Durdur'),
                   ),
                 ],
-              ),
-            ),
-            Positioned(
-              top: 20,
-              right: 20,
-              child: Container(
-                color: Colors.black54,
-                padding: const EdgeInsets.all(8),
-                child: Text(
-                  'MAC Güven: ${(_confidence * 100).toInt()}%',
-                  style: const TextStyle(color: Colors.white),
-                ),
               ),
             ),
           ],
