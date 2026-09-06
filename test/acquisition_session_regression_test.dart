@@ -19,10 +19,8 @@ class FakePhoneSensor implements PhoneSensor {
 
   @override
   Stream<RawSignalSample> get samples => controller.stream;
-
   @override
   Future<void> start() async => started = true;
-
   @override
   Future<void> stop() async => started = false;
 
@@ -76,8 +74,7 @@ void main() {
 
   test('device connection failure leaves session stopped', () async {
     final session = AcquisitionSession(devices: [FailingDevice()]);
-    expect(() => session.start(), throwsA(isA<StateError>()));
-    await Future<void>.delayed(Duration.zero);
+    await expectLater(session.start(), throwsA(isA<StateError>()));
     expect(session.running, isFalse);
     await session.dispose();
   });
