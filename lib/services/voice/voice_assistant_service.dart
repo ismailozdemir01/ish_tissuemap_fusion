@@ -1,13 +1,9 @@
-import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-/// Sesli asistan ile kullanıcı etkileşimi.
-/// Konuşma tanıma ve metin okuma (TTS) özelliklerini içerir.
 class VoiceAssistantService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _tts = FlutterTts();
-  
   bool _isListening = false;
   String _lastTranscription = '';
   Function(String)? onResult;
@@ -22,63 +18,45 @@ class VoiceAssistantService {
     await _tts.setSpeechRate(0.5);
   }
 
-  /// Sesli komut dinlemeye başlar
   Future<void> startListening() async {
-    if (!_isListening) {
-      bool available = await _speech.initialize(
-        onStatus: (status) {
-          if (status == 'notListening') {
-            _isListening = false;
-          }
-        },
-        onError: (error) => print('Ses hatası: $error'),
-      );
-      
-      if (available) {
-        _isListening = true;
-        _speech.listen(
-          onResult: (result) {
-            _lastTranscription = result.recognizedWords;
-            if (onResult != null) {
-              onResult!(_lastTranscription);
-            }
-            _processCommand(_lastTranscription);
-          },
-          listenOptions: stt.ListenOptions(
-            listenMode: stt.ListenMode.dictation,
-            partialResults: true,
-          ),
-        );
-      }
-    }
+    if (_isListening) return;
+    final available = await _speech.initialize(
+      onStatus: (status) {
+        if (status == 'notListening') _isListening = false;
+      },
+      onError: (_) => _isListening = false,
+    );
+    if (!available) return;
+    _isListening = true;
+    await _speech.listen(
+      onResult: (result) {
+        _lastTranscription = result.recognizedWords;
+        onResult?.call(_lastTranscription);
+        _processCommand(_lastTranscription);
+      },
+      listenOptions: const stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        partialResults: true,
+      ),
+    );
   }
 
-  /// Dinlemeyi durdurur
   void stopListening() {
-    if (_isListening) {
-      _speech.stop();
-      _isListening = false;
-    }
+    if (!_isListening) return;
+    _speech.stop();
+    _isListening = false;
   }
 
-  /// Sesli yanıt verir
-  Future<void> speak(String text) async {
-    await _tts.speak(text);
-  }
+  Future<void> speak(String text) => _tts.speak(text);
 
-  /// Komutları işler (örnek)
   void _processCommand(String command) {
-    String lower = command.toLowerCase();
+    final lower = command.toLowerCase();
     if (lower.contains('kaydet') || lower.contains('save')) {
       speak('Tarama sonuçları kaydediliyor.');
-      // Kaydetme fonksiyonu tetiklenir
     } else if (lower.contains('rapor') || lower.contains('report')) {
       speak('PDF rapor oluşturuluyor.');
-      // PDF oluşturma tetiklenir
     } else if (lower.contains('yardım') || lower.contains('help')) {
-      speak('Vücudunuzda telefonu gezdirin, kırmızı nokta takip edecek. Tarama başlatmak için ekrandaki butona basın.');
-    } else {
-      speak('Anlayamadım, lütfen tekrar eder misiniz?');
+      speak('Vücudunuzda telefonu gezdirin ve tarama ekranındaki yönlendirmeleri izleyin.');
     }
   }
 
