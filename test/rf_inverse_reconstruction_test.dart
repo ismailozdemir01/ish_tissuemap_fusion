@@ -19,12 +19,12 @@ void main() {
       5,
       (i) => RfSpatialPoint(
         x: i.toDouble(),
-        y: 0,
-        z: 0,
-        rssiDbm: -50 - i,
-        frequencyMHz: 2412,
+        y: 0.0,
+        z: 0.0,
+        rssiDbm: -50.0 - i,
+        frequencyMHz: 2412.0,
         quality: 0.9,
-        uncertaintyDb: 1,
+        uncertaintyDb: 1.0,
       ),
     );
     final result = engine.reconstruct(points);
