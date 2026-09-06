@@ -94,8 +94,6 @@ class CommonCoordinateFusionEngine {
     );
   }
 
-  /// Resets the coordinate frame. [anchor] is only a reference origin until a
-  /// real metric pose is accepted by addMeasuredPose().
   void reset({ScanPose? anchor}) {
     _metricPose = anchor;
     _hasMeasuredPose = false;
@@ -110,8 +108,6 @@ class CommonCoordinateFusionEngine {
     if (anchor != null) poseHistory.add(anchor);
   }
 
-  /// Adds a metric pose estimated from real inertial/metric tracking.
-  /// It is not a measurement of internal anatomy.
   bool addMeasuredPose(ScanPose pose) {
     if (!_validPose(pose) || pose.quality < minimumPoseQuality) return false;
     _metricPose = pose;
@@ -121,7 +117,6 @@ class CommonCoordinateFusionEngine {
     return true;
   }
 
-  /// Adds frame-to-frame optical motion. Pixel motion remains non-metric.
   bool addVisualMotion(VisualMotionObservation motion) {
     if (!motion.valid || motion.quality <= 0 || motion.uncertaintyPixels > maximumPixelResidual) return false;
     _opticalDx += motion.dxPixels;
@@ -134,22 +129,13 @@ class CommonCoordinateFusionEngine {
     return true;
   }
 
-  /// Associates a real RF observation with a real/estimated metric pose.
   bool addRfMeasurement(RfMeasurement measurement) {
     if (!measurement.isUsable || measurement.rssiDbm == null || !_hasMeasuredPose) return false;
     final pose = poseHistory.interpolate(measurement.timestampMicros, minimumQuality: minimumPoseQuality);
     if (pose == null) return false;
     rfMapper.add(
-      RfSpatialPoint(
-        x: pose.x,
-        y: pose.y,
-        z: pose.z,
-        rssiDbm: measurement.rssiDbm!,
-        frequencyMHz: measurement.frequencyMHz,
-        quality: measurement.quality,
-        uncertaintyDb: _poseUncertaintyDb(pose),
-      ),
-      measurement,
+      pose: pose,
+      measurement: measurement,
     );
     _rfCount++;
     return true;
@@ -171,12 +157,7 @@ class CommonCoordinateFusionEngine {
       pose.qx.isFinite && pose.qy.isFinite && pose.qz.isFinite && pose.qw.isFinite &&
       pose.quality.isFinite && pose.quality > 0;
 
-  double _poseUncertaintyMeters(ScanPose pose) {
-    // Engineering confidence estimate, not a measured physical error bar.
-    return (1.0 - pose.quality).clamp(0.0, 1.0).toDouble();
-  }
-
-  double _poseUncertaintyDb(ScanPose pose) => 1.0 + _poseUncertaintyMeters(pose) * 5.0;
+  double _poseUncertaintyMeters(ScanPose pose) => (1.0 - pose.quality).clamp(0.0, 1.0).toDouble();
 
   String _provenance() {
     if (_hasMeasuredPose && _rfCount > 0 && _opticalCount > 0) return 'ESTIMATED_METRIC_POSE_PLUS_OPTICAL_CONSTRAINT_PLUS_RF';
