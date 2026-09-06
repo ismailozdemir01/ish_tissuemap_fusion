@@ -34,7 +34,7 @@ class VoiceAssistantService {
         onResult?.call(_lastTranscription);
         _processCommand(_lastTranscription);
       },
-      listenOptions: const stt.SpeechListenOptions(
+      listenOptions: stt.SpeechListenOptions(
         listenMode: stt.ListenMode.dictation,
         partialResults: true,
       ),
