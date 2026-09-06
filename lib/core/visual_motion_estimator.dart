@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'visual_feature.dart';
 import 'visual_feature_tracker.dart';
 
 class VisualMotionObservation {
@@ -21,29 +22,16 @@ class VisualMotionObservation {
     required this.matchCount,
   });
 
-  bool get valid =>
-      dxPixels.isFinite &&
-      dyPixels.isFinite &&
-      scale.isFinite &&
-      scale > 0 &&
-      quality > 0 &&
-      uncertaintyPixels.isFinite;
+  bool get valid => dxPixels.isFinite && dyPixels.isFinite && scale.isFinite && scale > 0 && quality > 0 && uncertaintyPixels.isFinite;
 }
 
 class VisualMotionEstimator {
   final int minimumMatches;
   final double maximumResidualPixels;
 
-  const VisualMotionEstimator({
-    this.minimumMatches = 8,
-    this.maximumResidualPixels = 20,
-  });
+  const VisualMotionEstimator({this.minimumMatches = 8, this.maximumResidualPixels = 20});
 
-  VisualMotionObservation estimate(
-    VisualFeatureSet previous,
-    VisualFeatureSet current,
-    List<VisualFeatureMatch> matches,
-  ) {
+  VisualMotionObservation estimate(VisualFeatureSet previous, VisualFeatureSet current, List<VisualFeatureMatch> matches) {
     final valid = matches.where((m) => m.valid).toList(growable: false);
     if (valid.length < minimumMatches) {
       return VisualMotionObservation(
@@ -56,17 +44,12 @@ class VisualMotionEstimator {
         matchCount: valid.length,
       );
     }
-
     final dx = _median(valid.map((m) => m.dx).toList());
     final dy = _median(valid.map((m) => m.dy).toList());
-    final residuals = valid
-        .map((m) => math.sqrt(math.pow(m.dx - dx, 2) + math.pow(m.dy - dy, 2)))
-        .toList();
+    final residuals = valid.map((m) => math.sqrt(math.pow(m.dx - dx, 2) + math.pow(m.dy - dy, 2))).toList();
     final residual = _median(residuals);
     final inliers = residuals.where((v) => v <= maximumResidualPixels).length;
     final quality = (inliers / valid.length).clamp(0.0, 1.0).toDouble();
-
-    // Monocular pixel motion has no absolute metric scale. Keep scale dimensionless.
     return VisualMotionObservation(
       timestampMicros: current.timestampMicros,
       dxPixels: dx,
