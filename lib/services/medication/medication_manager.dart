@@ -31,7 +31,6 @@ class MedicationManager {
       final recognizer = TextRecognizer();
       final recognized = await recognizer.processImage(InputImage.fromFile(File(image.path)));
       await recognizer.close();
-
       final name = _extractMedicationName(recognized.text);
       final dosage = _extractDosage(recognized.text);
       final med = Medication(
@@ -48,15 +47,9 @@ class MedicationManager {
     }
   }
 
-  String _extractMedicationName(String text) {
-    final match = RegExp(r'[A-Z]{2,}[0-9]*|[A-Z][a-z]+[0-9]*').firstMatch(text);
-    return match?.group(0) ?? '';
-  }
+  String _extractMedicationName(String text) => RegExp(r'[A-Z]{2,}[0-9]*|[A-Z][a-z]+[0-9]*').firstMatch(text)?.group(0) ?? '';
 
-  String _extractDosage(String text) {
-    final match = RegExp(r'[0-9]+(\.[0-9]+)?\s*(mg|ml|g|µg|IU)').firstMatch(text);
-    return match?.group(0) ?? '';
-  }
+  String _extractDosage(String text) => RegExp(r'[0-9]+(\.[0-9]+)?\s*(mg|ml|g|µg|IU)').firstMatch(text)?.group(0) ?? '';
 
   Future<void> addReminder(String medId, DateTime time, String repeatInterval) async {
     final med = _medBox.get(medId);
@@ -67,12 +60,7 @@ class MedicationManager {
   }
 
   Future<void> _scheduleNotification(String title, String body, DateTime scheduledTime) async {
-    const android = AndroidNotificationDetails(
-      'medication_channel',
-      'İlaç Hatırlatıcıları',
-      importance: Importance.high,
-      priority: Priority.high,
-    );
+    const android = AndroidNotificationDetails('medication_channel', 'İlaç Hatırlatıcıları', importance: Importance.high, priority: Priority.high);
     const details = NotificationDetails(android: android, iOS: DarwinNotificationDetails());
     await _notifications.zonedSchedule(
       scheduledTime.millisecondsSinceEpoch ~/ 1000,
@@ -81,7 +69,6 @@ class MedicationManager {
       tz.TZDateTime.from(scheduledTime, tz.local),
       details,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 
