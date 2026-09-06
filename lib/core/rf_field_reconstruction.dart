@@ -26,18 +26,11 @@ class RfFieldResult {
   final String status;
   final String? reason;
 
-  const RfFieldResult({
-    required this.voxels,
-    required this.volumetric,
-    required this.status,
-    this.reason,
-  });
+  const RfFieldResult({required this.voxels, required this.volumetric, required this.status, this.reason});
 }
 
-/// Real inverse-processing stage for the observables currently available to a
-/// normal handset. RSSI can create a measured RF attenuation field; it cannot
-/// honestly be promoted to an anatomical CT/MRI volume without richer
-/// observability and calibration.
+/// Reconstructs a measured RF attenuation field from real handset RSSI observations.
+/// It deliberately does not label scalar RSSI output as anatomical CT/MRI imagery.
 class RfFieldReconstruction {
   final int gridSize;
   final double minimumQuality;
@@ -49,19 +42,19 @@ class RfFieldReconstruction {
     final base = mapper.baseline();
     if (points.length < 5 || base == null) {
       return const RfFieldResult(
-        voxels: [],
-        volumetric: false,
-        status: 'UNKNOWN',
+        voxels: [], volumetric: false, status: 'UNKNOWN',
         reason: 'INSUFFICIENT_RF_OBSERVABILITY_OR_BASELINE',
       );
     }
 
-    final minX = points.map((p) => p.x).reduce(math.min);
-    final maxX = points.map((p) => p.x).reduce(math.max);
-    final minY = points.map((p) => p.y).reduce(math.min);
-    final maxY = points.map((p) => p.y).reduce(math.max);
-    final minZ = points.map((p) => p.z).reduce(math.min);
-    final maxZ = points.map((p) => p.z).reduce(math.max);
+    double minValue(Iterable<double> values) => values.reduce((a, b) => a < b ? a : b);
+    double maxValue(Iterable<double> values) => values.reduce((a, b) => a > b ? a : b);
+    final minX = minValue(points.map((p) => p.x));
+    final maxX = maxValue(points.map((p) => p.x));
+    final minY = minValue(points.map((p) => p.y));
+    final maxY = maxValue(points.map((p) => p.y));
+    final minZ = minValue(points.map((p) => p.z));
+    final maxZ = maxValue(points.map((p) => p.z));
 
     final voxels = <RfFieldVoxel>[];
     for (var ix = 0; ix < gridSize; ix++) {
@@ -86,9 +79,7 @@ class RfFieldReconstruction {
           }
           if (weightSum > 0) {
             voxels.add(RfFieldVoxel(
-              x: x,
-              y: y,
-              z: z,
+              x: x, y: y, z: z,
               attenuationDb: weighted / weightSum,
               uncertaintyDb: uncertainty / weightSum,
               contributingSamples: count,
@@ -106,8 +97,6 @@ class RfFieldReconstruction {
     );
   }
 
-  double _grid(int index, double min, double max) {
-    if (gridSize <= 1) return min;
-    return min + (max - min) * index / (gridSize - 1);
-  }
+  double _grid(int index, double min, double max) =>
+      gridSize <= 1 ? min : min + (max - min) * index / (gridSize - 1);
 }
