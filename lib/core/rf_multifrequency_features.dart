@@ -12,16 +12,7 @@ class RfFrequencyFeatureSet {
   final double temporalSlopeDbPerSecond;
   final double quality;
 
-  const RfFrequencyFeatureSet({
-    required this.frequencyMHz,
-    required this.sampleCount,
-    required this.baselineDbm,
-    required this.meanDbm,
-    required this.deltaDb,
-    required this.standardDeviationDb,
-    required this.temporalSlopeDbPerSecond,
-    required this.quality,
-  });
+  const RfFrequencyFeatureSet({required this.frequencyMHz, required this.sampleCount, required this.baselineDbm, required this.meanDbm, required this.deltaDb, required this.standardDeviationDb, required this.temporalSlopeDbPerSecond, required this.quality});
 }
 
 class RfCrossFrequencyFeature {
@@ -31,51 +22,29 @@ class RfCrossFrequencyFeature {
   final double meanDifferenceDb;
   final double quality;
 
-  const RfCrossFrequencyFeature({
-    required this.lowerFrequencyMHz,
-    required this.upperFrequencyMHz,
-    required this.deltaDbDifference,
-    required this.meanDifferenceDb,
-    required this.quality,
-  });
+  const RfCrossFrequencyFeature({required this.lowerFrequencyMHz, required this.upperFrequencyMHz, required this.deltaDbDifference, required this.meanDifferenceDb, required this.quality});
 }
 
-/// Extracts independent real measurements per Wi-Fi frequency and derives
-/// cross-frequency differences only when both frequencies were observed.
 class RfMultifrequencyFeatureExtractor {
   const RfMultifrequencyFeatureExtractor();
 
-  List<RfFrequencyFeatureSet> extract(
-    Iterable<RfMeasurement> measurements, {
-    Map<double, double>? baselineByFrequency,
-  }) {
+  List<RfFrequencyFeatureSet> extract(Iterable<RfMeasurement> measurements, {Map<double, double>? baselineByFrequency}) {
     final groups = <double, List<RfMeasurement>>{};
     for (final measurement in measurements) {
-      if (!measurement.isUsable || measurement.rssiDbm == null) continue;
-      groups.putIfAbsent(measurement.frequencyMHz, () => <RfMeasurement>[]).add(measurement);
+      final frequency = measurement.frequencyMHz;
+      if (!measurement.isUsable || measurement.rssiDbm == null || frequency == null) continue;
+      groups.putIfAbsent(frequency, () => <RfMeasurement>[]).add(measurement);
     }
-
     final output = <RfFrequencyFeatureSet>[];
     for (final entry in groups.entries) {
       final ordered = [...entry.value]..sort((a, b) => a.timestampMicros.compareTo(b.timestampMicros));
       final values = ordered.map((m) => m.rssiDbm!).toList();
       final baseline = baselineByFrequency?[entry.key] ?? values.first;
       final mean = values.reduce((a, b) => a + b) / values.length;
-      final variance = values.length == 1
-          ? 0.0
-          : values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) / values.length;
+      final variance = values.length == 1 ? 0.0 : values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) / values.length;
       final slope = _slope(ordered);
       final quality = ordered.map((m) => m.quality).reduce((a, b) => a + b) / ordered.length;
-      output.add(RfFrequencyFeatureSet(
-        frequencyMHz: entry.key,
-        sampleCount: ordered.length,
-        baselineDbm: baseline,
-        meanDbm: mean,
-        deltaDb: mean - baseline,
-        standardDeviationDb: math.sqrt(variance),
-        temporalSlopeDbPerSecond: slope,
-        quality: quality,
-      ));
+      output.add(RfFrequencyFeatureSet(frequencyMHz: entry.key, sampleCount: ordered.length, baselineDbm: baseline, meanDbm: mean, deltaDb: mean - baseline, standardDeviationDb: math.sqrt(variance), temporalSlopeDbPerSecond: slope, quality: quality));
     }
     output.sort((a, b) => a.frequencyMHz.compareTo(b.frequencyMHz));
     return output;
@@ -87,13 +56,7 @@ class RfMultifrequencyFeatureExtractor {
       for (var j = i + 1; j < features.length; j++) {
         final a = features[i];
         final b = features[j];
-        output.add(RfCrossFrequencyFeature(
-          lowerFrequencyMHz: a.frequencyMHz,
-          upperFrequencyMHz: b.frequencyMHz,
-          deltaDbDifference: a.deltaDb - b.deltaDb,
-          meanDifferenceDb: a.meanDbm - b.meanDbm,
-          quality: math.min(a.quality, b.quality),
-        ));
+        output.add(RfCrossFrequencyFeature(lowerFrequencyMHz: a.frequencyMHz, upperFrequencyMHz: b.frequencyMHz, deltaDbDifference: a.deltaDb - b.deltaDb, meanDifferenceDb: a.meanDbm - b.meanDbm, quality: math.min(a.quality, b.quality)));
       }
     }
     return output;
