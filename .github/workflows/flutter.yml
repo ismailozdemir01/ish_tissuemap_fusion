@@ -22,7 +22,9 @@ jobs:
         run: flutter --version
       - name: Dependencies
         run: flutter pub get
+      - name: Format check
+        run: dart format --output=none --set-exit-if-changed .
       - name: Analyze
         run: flutter analyze
       - name: Test
-        run: flutter test
+        run: flutter test --reporter expanded
