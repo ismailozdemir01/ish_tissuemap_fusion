@@ -13,6 +13,8 @@ class RawSignalSample {
   final List<double> values;
   final String unit;
   final double quality;
+  final double? frequencyMHz;
+  final int? channel;
 
   const RawSignalSample({
     required this.sensorId,
@@ -21,6 +23,8 @@ class RawSignalSample {
     required this.values,
     required this.unit,
     required this.quality,
+    this.frequencyMHz,
+    this.channel,
   });
 }
 
