@@ -6,7 +6,7 @@ class RfInverseSolveResult {
   final double regularization;
   final double conditionEstimate;
   final bool valid;
-  final bool reason;
+  final String reason;
 
   const RfInverseSolveResult({
     required this.values,
@@ -23,10 +23,12 @@ class RfInverseSolveResult {
     regularization: 0,
     conditionEstimate: double.infinity,
     valid: false,
-    reason: false,
+    reason: 'INSUFFICIENT_FORWARD_MODEL_OR_MEASUREMENTS',
   );
 }
 
+/// Tikhonov inverse solver. The forward matrix must come from a validated
+/// physical/calibration model; this class never invents tissue parameters.
 class RegularizedRfInverseSolver {
   final double lambda;
   const RegularizedRfInverseSolver({this.lambda = 0.01}) : assert(lambda > 0);
@@ -85,7 +87,7 @@ class RegularizedRfInverseSolver {
       regularization: lambda,
       conditionEstimate: conditionEstimate,
       valid: true,
-      reason: true,
+      reason: 'REGULARIZED_RF_FIELD_SOLUTION',
     );
   }
 
