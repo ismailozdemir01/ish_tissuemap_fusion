@@ -247,6 +247,4 @@ class PhoneOnlyBodyScanController {
     final elapsed = math.max(0, pose.timestampMicros - start) / 1000000.0;
     return 1.0 + elapsed * 0.5;
   }
-
-  double _poseUncertaintyDb(ScanPose pose) => _poseUncertainty(pose) * 5.0;
 }
