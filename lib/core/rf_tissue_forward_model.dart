@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'rf_propagation_physics.dart';
 import 'tissue_volume_reconstruction_engine.dart';
 
 /// Frequency-dependent calibration supplied by measured phantom/human-data
@@ -12,15 +13,13 @@ abstract class RfTissueCalibration {
   double? referenceRssiDbm(double frequencyMHz);
 }
 
-/// Provides the measured reference required to convert raw RSSI to a
-/// propagation residual. A residual must never be invented from the scan.
 abstract class RfReferenceProvider {
   double? referenceRssiDbm(double frequencyMHz);
 }
 
-/// Software forward operator for the phone-only RF inverse problem.
-/// Geometry comes from the phone trajectory; material response comes only
-/// from an explicitly supplied calibration object.
+/// Frequency-aware software forward operator for the phone-only RF inverse
+/// problem. It is not a full-wave electromagnetic solver: antenna response,
+/// material parameters and validation remain external calibration inputs.
 class PhoneRfTissueForwardModel
     implements ValidatedTissueForwardModel, RfReferenceProvider {
   @override
@@ -70,7 +69,7 @@ class PhoneRfTissueForwardModel
       if (!sensitivity.isFinite || !attenuation.isFinite || attenuation < 0) {
         throw ArgumentError('Invalid RF calibration response');
       }
-
+      final wavelength = RfPropagationPhysics.wavelengthMeters(frequency);
       final source = measurementCoordinates[m];
       final row = <double>[];
       for (final voxel in voxelCoordinates) {
@@ -82,9 +81,9 @@ class PhoneRfTissueForwardModel
           math.sqrt(dx * dx + dy * dy + dz * dz),
         );
         final path = distance * pathLengthScale;
-        final geometric = 1.0 / distance;
+        final sphericalSpreading = wavelength / (4.0 * math.pi * distance);
         final medium = math.exp(-attenuation * path);
-        final value = sensitivity * geometric * medium;
+        final value = sensitivity * sphericalSpreading * medium;
         if (!value.isFinite) {
           throw StateError('Non-finite RF forward coefficient');
         }
