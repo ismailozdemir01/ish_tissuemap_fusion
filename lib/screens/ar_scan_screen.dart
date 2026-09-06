@@ -43,21 +43,22 @@ class _ARScanScreenState extends State<ARScanScreen> {
     _acoustic.init();
     _ar.initCamera();
     _emf.startListening((rawFieldMagnitude) {
-      if (_isScanning) {
-        accelerometerEvents.first.then((acc) {
-          gyroscopeEvents.first.then((gyro) {
-            final filtered = _mac.correct(rawFieldMagnitude, acc, gyro);
-            _confidence = _mac.getConfidenceScore();
-            _captureData(filtered);
-          });
+      if (!_isScanning || !mounted) return;
+      accelerometerEvents.first.then((acc) {
+        if (!mounted || !_isScanning) return;
+        gyroscopeEvents.first.then((gyro) {
+          if (!mounted || !_isScanning) return;
+          final filtered = _mac.correct(rawFieldMagnitude, acc, gyro);
+          _confidence = _mac.getConfidenceScore();
+          _captureData(filtered);
         });
-      }
+      });
     });
   }
 
   Future<void> _captureData(double filteredFieldMagnitude) async {
-    // Current phone sensors do not provide a validated tissue-density measurement.
-    // Do not convert magnetic field strength into a fabricated clinical value.
+    // Phone magnetometer data is retained as raw sensor telemetry only.
+    // It is never converted into tissue density/conductivity without validation.
     final estimatedPos = _ar.estimatePositionOnBody();
     if (!mounted) return;
     setState(() {
@@ -108,7 +109,7 @@ class _ARScanScreenState extends State<ARScanScreen> {
               icon: const Icon(Icons.timeline),
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const TimelineScreen()),
+                MaterialPageRoute(builder: (_) => TimelineScreen()),
               ),
             ),
           ],
