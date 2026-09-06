@@ -8,6 +8,9 @@ import 'package:ish_tissuemap_fusion/models/imaging_pipeline.dart';
 class FakePhoneSensor implements PhoneSensor {
   final StreamController<RawSignalSample> controller = StreamController<RawSignalSample>.broadcast();
   bool started = false;
+  final bool emitSynchronously;
+
+  FakePhoneSensor({this.emitSynchronously = false});
 
   @override
   final capability = const SensorCapability(
@@ -19,8 +22,22 @@ class FakePhoneSensor implements PhoneSensor {
 
   @override
   Stream<RawSignalSample> get samples => controller.stream;
+
   @override
-  Future<void> start() async => started = true;
+  Future<void> start() async {
+    started = true;
+    if (emitSynchronously) {
+      controller.add(const RawSignalSample(
+        sensorId: 'test.sensor',
+        modality: SignalModality.external,
+        timestampMicros: 1,
+        values: [7],
+        unit: 'unit',
+        quality: 1,
+      ));
+    }
+  }
+
   @override
   Future<void> stop() async => started = false;
 
@@ -69,6 +86,23 @@ void main() {
     expect(sensor.started, isFalse);
     await subscription.cancel();
     await session.dispose();
+    await sensor.dispose();
+  });
+
+  test('synchronous first sensor emission is not lost during startup', () async {
+    final sensor = FakePhoneSensor(emitSynchronously: true);
+    final session = AcquisitionSession(sensors: [sensor]);
+    final received = <RawSignalSample>[];
+    final subscription = session.samples.listen(received.add);
+
+    await session.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(received, hasLength(1));
+    expect(received.single.values, [7]);
+
+    await session.dispose();
+    await subscription.cancel();
     await sensor.dispose();
   });
 
