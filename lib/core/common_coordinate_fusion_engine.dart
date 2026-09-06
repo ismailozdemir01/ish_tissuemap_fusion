@@ -6,8 +6,6 @@ import '../models/body_scan.dart';
 import '../models/rf_measurement.dart';
 import 'rf_spatial_mapper.dart';
 
-/// Keeps estimated metric pose, non-metric optical motion and RF observations
-/// in one coordinate state without inventing a pixel-to-meter scale.
 class CommonCoordinateFusionState {
   final ScanPose? metricPose;
   final double opticalDxPixels;
@@ -20,31 +18,9 @@ class CommonCoordinateFusionState {
   final double positionUncertaintyMeters;
   final String provenance;
 
-  const CommonCoordinateFusionState({
-    required this.metricPose,
-    required this.opticalDxPixels,
-    required this.opticalDyPixels,
-    required this.opticalQuality,
-    required this.opticalUncertaintyPixels,
-    required this.opticalObservationCount,
-    required this.rfObservationCount,
-    required this.coordinateQuality,
-    required this.positionUncertaintyMeters,
-    required this.provenance,
-  });
+  const CommonCoordinateFusionState({required this.metricPose, required this.opticalDxPixels, required this.opticalDyPixels, required this.opticalQuality, required this.opticalUncertaintyPixels, required this.opticalObservationCount, required this.rfObservationCount, required this.coordinateQuality, required this.positionUncertaintyMeters, required this.provenance});
 
-  static const empty = CommonCoordinateFusionState(
-    metricPose: null,
-    opticalDxPixels: 0,
-    opticalDyPixels: 0,
-    opticalQuality: 0,
-    opticalUncertaintyPixels: double.infinity,
-    opticalObservationCount: 0,
-    rfObservationCount: 0,
-    coordinateQuality: 0,
-    positionUncertaintyMeters: double.infinity,
-    provenance: 'NO_MEASURED_COORDINATE_DATA',
-  );
+  static const empty = CommonCoordinateFusionState(metricPose: null, opticalDxPixels: 0, opticalDyPixels: 0, opticalQuality: 0, opticalUncertaintyPixels: double.infinity, opticalObservationCount: 0, rfObservationCount: 0, coordinateQuality: 0, positionUncertaintyMeters: double.infinity, provenance: 'NO_MEASURED_COORDINATE_DATA');
 }
 
 class CommonCoordinateFusionEngine {
@@ -53,7 +29,6 @@ class CommonCoordinateFusionEngine {
   final double visualWeight;
   final PoseHistory poseHistory;
   final RfSpatialMapper rfMapper;
-
   ScanPose? _metricPose;
   bool _hasMeasuredPose = false;
   bool _hasReferenceOrigin = false;
@@ -64,34 +39,13 @@ class CommonCoordinateFusionEngine {
   int _opticalCount = 0;
   int _rfCount = 0;
 
-  CommonCoordinateFusionEngine({
-    this.minimumPoseQuality = 0.25,
-    this.maximumPixelResidual = 20,
-    this.visualWeight = 0.35,
-    PoseHistory? poseHistory,
-    RfSpatialMapper? rfMapper,
-  })  : poseHistory = poseHistory ?? PoseHistory(),
-        rfMapper = rfMapper ?? RfSpatialMapper();
+  CommonCoordinateFusionEngine({this.minimumPoseQuality = 0.25, this.maximumPixelResidual = 20, this.visualWeight = 0.35, PoseHistory? poseHistory, RfSpatialMapper? rfMapper}) : poseHistory = poseHistory ?? PoseHistory(), rfMapper = rfMapper ?? RfSpatialMapper();
 
   CommonCoordinateFusionState get state {
     final pose = _metricPose;
     final poseQuality = _hasMeasuredPose ? (pose?.quality ?? 0) : 0;
-    final opticalQuality = _opticalQuality;
-    final quality = math.max(poseQuality, opticalQuality * visualWeight).clamp(0.0, 1.0).toDouble();
-    return CommonCoordinateFusionState(
-      metricPose: pose,
-      opticalDxPixels: _opticalDx,
-      opticalDyPixels: _opticalDy,
-      opticalQuality: opticalQuality,
-      opticalUncertaintyPixels: _opticalUncertainty,
-      opticalObservationCount: _opticalCount,
-      rfObservationCount: _rfCount,
-      coordinateQuality: quality,
-      positionUncertaintyMeters: _hasMeasuredPose && pose != null
-          ? _poseUncertaintyMeters(pose)
-          : double.infinity,
-      provenance: _provenance(),
-    );
+    final quality = math.max(poseQuality, _opticalQuality * visualWeight).clamp(0.0, 1.0).toDouble();
+    return CommonCoordinateFusionState(metricPose: pose, opticalDxPixels: _opticalDx, opticalDyPixels: _opticalDy, opticalQuality: _opticalQuality, opticalUncertaintyPixels: _opticalUncertainty, opticalObservationCount: _opticalCount, rfObservationCount: _rfCount, coordinateQuality: quality, positionUncertaintyMeters: _hasMeasuredPose && pose != null ? (1.0 - pose.quality).clamp(0.0, 1.0).toDouble() : double.infinity, provenance: _provenance());
   }
 
   void reset({ScanPose? anchor}) {
@@ -122,9 +76,7 @@ class CommonCoordinateFusionEngine {
     _opticalDx += motion.dxPixels;
     _opticalDy += motion.dyPixels;
     _opticalQuality = (_opticalQuality * _opticalCount + motion.quality) / (_opticalCount + 1);
-    _opticalUncertainty = _opticalCount == 0
-        ? motion.uncertaintyPixels
-        : math.sqrt(_opticalUncertainty * _opticalUncertainty + motion.uncertaintyPixels * motion.uncertaintyPixels);
+    _opticalUncertainty = _opticalCount == 0 ? motion.uncertaintyPixels : math.sqrt(_opticalUncertainty * _opticalUncertainty + motion.uncertaintyPixels * motion.uncertaintyPixels);
     _opticalCount++;
     return true;
   }
@@ -133,37 +85,25 @@ class CommonCoordinateFusionEngine {
     if (!measurement.isUsable || measurement.rssiDbm == null || !_hasMeasuredPose) return false;
     final pose = poseHistory.interpolate(measurement.timestampMicros, minimumQuality: minimumPoseQuality);
     if (pose == null) return false;
-    rfMapper.add(
-      pose: pose,
-      measurement: measurement,
-    );
+    rfMapper.add(pose: pose, measurement: measurement);
     _rfCount++;
     return true;
   }
 
-  CommonCoordinateFusionState fuse({
-    ScanPose? measuredPose,
-    VisualMotionObservation? visualMotion,
-    RfMeasurement? rfMeasurement,
-  }) {
+  CommonCoordinateFusionState fuse({ScanPose? measuredPose, VisualMotionObservation? visualMotion, RfMeasurement? rfMeasurement}) {
     if (measuredPose != null) addMeasuredPose(measuredPose);
     if (visualMotion != null) addVisualMotion(visualMotion);
     if (rfMeasurement != null) addRfMeasurement(rfMeasurement);
     return state;
   }
 
-  bool _validPose(ScanPose pose) =>
-      pose.x.isFinite && pose.y.isFinite && pose.z.isFinite &&
-      pose.qx.isFinite && pose.qy.isFinite && pose.qz.isFinite && pose.qw.isFinite &&
-      pose.quality.isFinite && pose.quality > 0;
-
-  double _poseUncertaintyMeters(ScanPose pose) => (1.0 - pose.quality).clamp(0.0, 1.0).toDouble();
+  bool _validPose(ScanPose pose) => pose.x.isFinite && pose.y.isFinite && pose.z.isFinite && pose.qx.isFinite && pose.qy.isFinite && pose.qz.isFinite && pose.qw.isFinite && pose.quality.isFinite && pose.quality > 0;
 
   String _provenance() {
-    if (_hasMeasuredPose && _rfCount > 0 && _opticalCount > 0) return 'ESTIMATED_METRIC_POSE_PLUS_OPTICAL_CONSTRAINT_PLUS_RF';
-    if (_hasMeasuredPose && _rfCount > 0) return 'ESTIMATED_METRIC_POSE_PLUS_RF';
-    if (_hasMeasuredPose && _opticalCount > 0) return 'ESTIMATED_METRIC_POSE_PLUS_NON_METRIC_OPTICAL';
-    if (_hasMeasuredPose) return 'ESTIMATED_METRIC_POSE_FROM_PHONE_SENSORS';
+    if (_hasMeasuredPose && _rfCount > 0 && _opticalCount > 0) return 'MEASURED_IMU_POSE_PLUS_OPTICAL_CONSTRAINT_PLUS_RF';
+    if (_hasMeasuredPose && _rfCount > 0) return 'MEASURED_IMU_POSE_PLUS_RF';
+    if (_hasMeasuredPose && _opticalCount > 0) return 'MEASURED_IMU_POSE_PLUS_NON_METRIC_OPTICAL';
+    if (_hasMeasuredPose) return 'MEASURED_IMU_POSE';
     if (_opticalCount > 0 && _hasReferenceOrigin) return 'REFERENCE_ORIGIN_PLUS_NON_METRIC_OPTICAL';
     if (_opticalCount > 0) return 'NON_METRIC_OPTICAL_ONLY';
     if (_hasReferenceOrigin) return 'REFERENCE_ORIGIN_ONLY';
