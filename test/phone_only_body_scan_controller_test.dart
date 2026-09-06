@@ -33,8 +33,9 @@ class _FakeSensor implements PhoneSensor {
 
 void main() {
   test('records real sensor samples and stops cleanly', () async {
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
     final sensor = _FakeSensor([
-      const RawSignalSample(sensorId: 'test.accelerometer', modality: SignalModality.inertial, timestampMicros: 1000, values: [0, 0, 9.80665], unit: 'm/s²', quality: 1),
+      RawSignalSample(sensorId: 'test.accelerometer', modality: SignalModality.inertial, timestampMicros: timestamp, values: const [0, 0, 9.80665], unit: 'm/s²', quality: 1),
     ]);
     final controller = PhoneOnlyBodyScanController(acquisition: AcquisitionSession(sensors: [sensor]));
     final received = <dynamic>[];
