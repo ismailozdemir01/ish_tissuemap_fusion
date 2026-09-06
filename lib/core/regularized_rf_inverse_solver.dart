@@ -4,6 +4,7 @@ class RfInverseSolveResult {
   final List<double> values;
   final double residualNorm;
   final double regularization;
+  final double conditionEstimate;
   final bool valid;
   final String reason;
 
@@ -11,6 +12,7 @@ class RfInverseSolveResult {
     required this.values,
     required this.residualNorm,
     required this.regularization,
+    required this.conditionEstimate,
     required this.valid,
     required this.reason,
   });
@@ -19,6 +21,7 @@ class RfInverseSolveResult {
     values: <double>[],
     residualNorm: double.infinity,
     regularization: 0,
+    conditionEstimate: double.infinity,
     valid: false,
     reason: 'INSUFFICIENT_FORWARD_MODEL_OR_MEASUREMENTS',
   );
@@ -26,7 +29,8 @@ class RfInverseSolveResult {
 
 /// Solves a linearized inverse problem using Tikhonov/ridge regularization.
 /// A is supplied by a validated forward propagation model; this class never
-/// invents a tissue response matrix.
+/// invents a tissue response matrix. The condition estimate is a conservative
+/// diagonal-scale diagnostic, not a formal matrix condition number.
 class RegularizedRfInverseSolver {
   final double lambda;
   const RegularizedRfInverseSolver({this.lambda = 0.01}) : assert(lambda > 0);
@@ -39,7 +43,9 @@ class RegularizedRfInverseSolver {
     if (forwardMatrix.isEmpty || observations.isEmpty ||
         forwardMatrix.length != observations.length ||
         forwardMatrix.any((r) => r.isEmpty || r.any((v) => !v.isFinite)) ||
-        observations.any((v) => !v.isFinite)) return RfInverseSolveResult.unavailable;
+        observations.any((v) => !v.isFinite)) {
+      return RfInverseSolveResult.unavailable;
+    }
     final columns = forwardMatrix.first.length;
     if (forwardMatrix.any((r) => r.length != columns) || columns == 0) {
       return RfInverseSolveResult.unavailable;
@@ -56,10 +62,25 @@ class RegularizedRfInverseSolver {
       final wi = w[i];
       for (var c = 0; c < columns; c++) {
         aty[c] += row[c] * wi * observations[i];
-        for (var d = 0; d < columns; d++) ata[c][d] += row[c] * wi * row[d];
+        for (var d = 0; d < columns; d++) {
+          ata[c][d] += row[c] * wi * row[d];
+        }
       }
     }
     for (var i = 0; i < columns; i++) ata[i][i] += lambda;
+
+    final diagonal = ata.map((row) => row[row.indexOf(row.reduce(math.max))]).toList();
+    final positiveDiagonal = <double>[];
+    for (var i = 0; i < columns; i++) {
+      final value = ata[i][i].abs();
+      if (!value.isFinite || value <= 0) return RfInverseSolveResult.unavailable;
+      positiveDiagonal.add(value);
+    }
+    final minDiagonal = positiveDiagonal.reduce(math.min);
+    final maxDiagonal = positiveDiagonal.reduce(math.max);
+    final conditionEstimate = maxDiagonal / minDiagonal;
+    if (!conditionEstimate.isFinite) return RfInverseSolveResult.unavailable;
+
     final solution = _solve(ata, aty);
     if (solution == null || solution.any((v) => !v.isFinite)) {
       return RfInverseSolveResult.unavailable;
@@ -67,7 +88,9 @@ class RegularizedRfInverseSolver {
     var residual = 0.0;
     for (var i = 0; i < forwardMatrix.length; i++) {
       var predicted = 0.0;
-      for (var c = 0; c < columns; c++) predicted += forwardMatrix[i][c] * solution[c];
+      for (var c = 0; c < columns; c++) {
+        predicted += forwardMatrix[i][c] * solution[c];
+      }
       final e = observations[i] - predicted;
       residual += w[i] * e * e;
     }
@@ -75,6 +98,7 @@ class RegularizedRfInverseSolver {
       values: solution,
       residualNorm: math.sqrt(residual),
       regularization: lambda,
+      conditionEstimate: conditionEstimate,
       valid: true,
       reason: 'REGULARIZED_RF_FIELD_SOLUTION',
     );
