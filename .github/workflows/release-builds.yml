@@ -3,6 +3,8 @@ name: Release Builds
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -10,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  android-apk:
-    name: Android APK
+  release-gates:
+    name: Release safety gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +23,38 @@ jobs:
           cache: true
       - name: Flutter version
         run: flutter --version
+      - name: Generate missing platform scaffolding
+        run: flutter create --platforms android,ios,windows .
+      - name: Dependencies
+        run: flutter pub get
+      - name: Format check
+        run: dart format --output=none --set-exit-if-changed lib test
+      - name: Unit and release safety tests
+        run: flutter test
+      - name: Analyze
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+
+  android-apk:
+    name: Android APK
+    needs: release-gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate missing Android scaffolding
+        run: flutter create --platforms android .
+      - name: Restore project RF bridge
+        run: git checkout -- android/app/src/main/kotlin/com/ish/tissuemapfusion/MainActivity.kt
       - name: Dependencies
         run: flutter pub get
       - name: Build APK
         run: flutter build apk --release
+      - name: Validate APK artifact
+        shell: bash
+        run: test -s build/app/outputs/flutter-apk/app-release.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -34,6 +64,7 @@ jobs:
 
   windows-exe:
     name: Windows EXE
+    needs: release-gates
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,14 +72,18 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Flutter version
-        run: flutter --version
+      - name: Generate missing Windows scaffolding
+        run: flutter create --platforms windows .
       - name: Dependencies
         run: flutter pub get
-      - name: Enable Windows desktop
-        run: flutter config --enable-windows-desktop
       - name: Build Windows
         run: flutter build windows --release
+      - name: Validate Windows executable
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build/windows/x64/runner/Release -Filter *.exe -File | Select-Object -First 1
+          if (-not $exe) { throw 'No Windows EXE produced' }
+          if ($exe.Length -le 0) { throw 'Windows EXE is empty' }
       - name: Package Windows build
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ish-tissuemap-fusion-windows-exe.zip -Force
@@ -61,6 +96,7 @@ jobs:
 
   ios-ipa:
     name: iOS IPA
+    needs: release-gates
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,16 +104,22 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Flutter version
-        run: flutter --version
+      - name: Generate missing iOS scaffolding
+        run: flutter create --platforms ios .
       - name: Dependencies
         run: flutter pub get
-      - name: Check iOS project
-        run: test -f ios/Runner.xcodeproj/project.pbxproj
       - name: Build iOS without code signing
         run: flutter build ios --release --no-codesign
-      - name: Package iOS app
-        run: mkdir -p Payload && cp -R build/ios/iphoneos/Runner.app Payload/Runner.app && zip -r ish-tissuemap-fusion-ios-unsigned.ipa Payload
+      - name: Validate iOS app bundle
+        run: test -d build/ios/iphoneos/Runner.app
+      - name: Package unsigned IPA
+        run: |
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -r ish-tissuemap-fusion-ios-unsigned.ipa Payload
+      - name: Validate IPA artifact
+        run: test -s ish-tissuemap-fusion-ios-unsigned.ipa
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
