@@ -40,7 +40,7 @@ class PhoneOnlyBodyScanController {
         rfMapper = rfMapper ?? RfSpatialMapper(),
         poseHistory = poseHistory ?? PoseHistory(),
         opticalRegistration = opticalRegistration ?? const OpticalRegistrationEngine(),
-        coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine();
+        coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine(rfMapper: rfMapper ?? RfSpatialMapper());
 
   final AcquisitionSession acquisition;
   final WifiRfService rf;
@@ -81,17 +81,16 @@ class PhoneOnlyBodyScanController {
     if (_running) return;
     _region = region;
     _startedAtMicros = DateTime.now().microsecondsSinceEpoch;
-    _pose = ScanPose(timestampMicros: _startedAtMicros!, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1, quality: 0.75);
+    _pose = ScanPose(timestampMicros: _startedAtMicros!, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1, quality: 0);
     _velocity = Vector3.zero();
     _orientation = Quaternion.identity();
     _lastAcceleration = null;
     _lastGyroMicros = null;
     _lastAccelerationMicros = null;
     poseHistory.clear();
-    poseHistory.add(_pose);
     coordinateFusion.reset(anchor: _pose);
-    visualTracking.start();
     try {
+      visualTracking.start();
       if (initializeCamera) {
         try {
           await camera.initialize();
@@ -118,7 +117,7 @@ class PhoneOnlyBodyScanController {
       final registered = opticalRegistration.register(
         frame,
         poseHistory,
-        poseUncertainty: _poseUncertaintyDb(_pose),
+        poseUncertainty: _poseUncertainty(_pose),
       );
       if (registered != null) _registeredFrames.add(registered);
       final tracking = await visualTracking.process(frame);
@@ -132,7 +131,6 @@ class PhoneOnlyBodyScanController {
   }
 
   Future<void> stop() async {
-    if (!_running && _sensorSubscription == null && _rfSubscription == null) return;
     _running = false;
     rf.stop();
     visualTracking.stop();
@@ -165,18 +163,16 @@ class PhoneOnlyBodyScanController {
     if (!_running || !measurement.isUsable) return;
     final pose = poseHistory.interpolate(measurement.timestampMicros, minimumQuality: 0.25);
     if (pose == null || measurement.rssiDbm == null) return;
-    rfMapper.add(
-      RfSpatialPoint(
-        x: pose.x,
-        y: pose.y,
-        z: pose.z,
-        rssiDbm: measurement.rssiDbm!,
-        frequencyMHz: measurement.frequencyMHz,
-        quality: measurement.quality,
-        uncertaintyDb: _poseUncertaintyDb(pose),
-      ),
-      measurement,
+    final point = RfSpatialPoint(
+      x: pose.x,
+      y: pose.y,
+      z: pose.z,
+      rssiDbm: measurement.rssiDbm!,
+      frequencyMHz: measurement.frequencyMHz,
+      quality: measurement.quality,
+      uncertaintyDb: _poseUncertaintyDb(pose),
     );
+    rfMapper.add(point, measurement);
     coordinateFusion.addRfMeasurement(measurement);
     _emitSpatial(RawSignalSample(
       sensorId: 'phone.wifi.rf',
@@ -278,9 +274,11 @@ class PhoneOnlyBodyScanController {
     return (0.75 * math.exp(-elapsed / 12.0)).clamp(0.05, 0.75).toDouble();
   }
 
-  double _poseUncertaintyDb(ScanPose pose) {
+  double _poseUncertainty(ScanPose pose) {
     final start = _startedAtMicros ?? pose.timestampMicros;
     final elapsed = math.max(0, pose.timestampMicros - start) / 1000000.0;
     return 1.0 + elapsed * 0.5;
   }
+
+  double _poseUncertaintyDb(ScanPose pose) => _poseUncertainty(pose) * 5.0;
 }
