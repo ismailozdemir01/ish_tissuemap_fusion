@@ -34,8 +34,8 @@ class ProcessingRoute {
     },
   );
 
-  static const hybrid = ProcessingRoute(
-    location: ProcessingLocation.hybrid,
-    capabilities: ProcessingCapability.values.toSet(),
-  );
+  static ProcessingRoute get hybrid => ProcessingRoute(
+        location: ProcessingLocation.hybrid,
+        capabilities: ProcessingCapability.values.toSet(),
+      );
 }
