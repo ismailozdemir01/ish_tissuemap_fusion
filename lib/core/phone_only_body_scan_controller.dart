@@ -19,21 +19,8 @@ import 'phone_sensor_adapters.dart';
 import 'pose_history.dart';
 import 'rf_spatial_mapper.dart';
 
-/// Coordinates the primary acquisition path: the phone itself.
-/// RF, inertial and optical observations are accepted only when actually
-/// produced by the phone. No anatomical measurement is synthesized.
 class PhoneOnlyBodyScanController {
-  PhoneOnlyBodyScanController({
-    AcquisitionSession? acquisition,
-    WifiRfService? rf,
-    OpticalCameraService? camera,
-    VisualTrackingService? visualTracking,
-    BodyScanEngine? bodyScan,
-    RfSpatialMapper? rfMapper,
-    PoseHistory? poseHistory,
-    OpticalRegistrationEngine? opticalRegistration,
-    CommonCoordinateFusionEngine? coordinateFusion,
-  }) {
+  PhoneOnlyBodyScanController({AcquisitionSession? acquisition, WifiRfService? rf, OpticalCameraService? camera, VisualTrackingService? visualTracking, BodyScanEngine? bodyScan, RfSpatialMapper? rfMapper, PoseHistory? poseHistory, OpticalRegistrationEngine? opticalRegistration, CommonCoordinateFusionEngine? coordinateFusion}) {
     this.acquisition = acquisition ?? AcquisitionSession(sensors: PhoneSensorRegistry.defaults().sensors);
     this.rf = rf ?? WifiRfService();
     this.camera = camera ?? OpticalCameraService();
@@ -42,10 +29,7 @@ class PhoneOnlyBodyScanController {
     this.rfMapper = rfMapper ?? RfSpatialMapper();
     this.poseHistory = poseHistory ?? PoseHistory();
     this.opticalRegistration = opticalRegistration ?? const OpticalRegistrationEngine();
-    this.coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine(
-      poseHistory: this.poseHistory,
-      rfMapper: this.rfMapper,
-    );
+    this.coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine(poseHistory: this.poseHistory, rfMapper: this.rfMapper);
   }
 
   late final AcquisitionSession acquisition;
@@ -107,6 +91,7 @@ class PhoneOnlyBodyScanController {
       _rfSubscription = rf.measurements.listen(_onRfMeasurement);
       await acquisition.start();
       rf.start();
+      await Future<void>.delayed(Duration.zero);
     } catch (_) {
       await stop();
       rethrow;
@@ -163,16 +148,7 @@ class PhoneOnlyBodyScanController {
     final pose = poseHistory.interpolate(measurement.timestampMicros, minimumQuality: 0.25);
     if (pose == null || measurement.rssiDbm == null) return;
     coordinateFusion.addRfMeasurement(measurement);
-    _emitSpatial(RawSignalSample(
-      sensorId: 'phone.wifi.rf',
-      modality: SignalModality.radioFrequency,
-      timestampMicros: measurement.timestampMicros,
-      values: [measurement.rssiDbm!],
-      unit: 'dBm',
-      quality: measurement.quality,
-      frequencyMHz: measurement.frequencyMHz,
-      channel: measurement.channel,
-    ), pose: pose);
+    _emitSpatial(RawSignalSample(sensorId: 'phone.wifi.rf', modality: SignalModality.radioFrequency, timestampMicros: measurement.timestampMicros, values: [measurement.rssiDbm!], unit: 'dBm', quality: measurement.quality, frequencyMHz: measurement.frequencyMHz, channel: measurement.channel), pose: pose);
   }
 
   void _updatePose(RawSignalSample sample) {
@@ -228,12 +204,8 @@ class PhoneOnlyBodyScanController {
 
   void _emitSpatial(RawSignalSample signal, {required ScanPose pose}) {
     final spatial = SpatialAcquisitionSample(signal: signal, pose: pose, region: _region);
-    try {
-      bodyScan.add(spatial);
-    } catch (_) {
-      return;
-    }
     _samples.add(spatial);
+    bodyScan.add(spatial);
   }
 
   double _poseQuality(int timestampMicros) {
