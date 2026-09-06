@@ -20,9 +20,8 @@ import 'pose_history.dart';
 import 'rf_spatial_mapper.dart';
 
 /// Coordinates the primary acquisition path: the phone itself.
-///
-/// RF, inertial and optical observations are accepted only when they are
-/// actually produced by the phone. No anatomical measurement is synthesized.
+/// RF, inertial and optical observations are accepted only when actually
+/// produced by the phone. No anatomical measurement is synthesized.
 class PhoneOnlyBodyScanController {
   PhoneOnlyBodyScanController({
     AcquisitionSession? acquisition,
@@ -96,9 +95,7 @@ class PhoneOnlyBodyScanController {
       if (initializeCamera) {
         try {
           await camera.initialize();
-        } catch (_) {
-          // Optical acquisition remains optional when the camera is unavailable.
-        }
+        } catch (_) {}
       }
       _running = true;
       _sensorSubscription = acquisition.samples.listen(_onSensorSample);
@@ -116,16 +113,11 @@ class PhoneOnlyBodyScanController {
     try {
       final frame = await camera.capture();
       _frames.add(frame);
-      final registered = opticalRegistration.register(
-        frame,
-        poseHistory,
-        poseUncertainty: _poseUncertainty(_pose),
-      );
+      final registered = opticalRegistration.register(frame, poseHistory, poseUncertainty: _poseUncertainty(_pose));
       if (registered != null) _registeredFrames.add(registered);
       final tracking = await visualTracking.process(frame);
       _visualResults.add(tracking);
-      final motion = tracking.motion;
-      if (motion != null) coordinateFusion.addVisualMotion(motion);
+      if (tracking.motion != null) coordinateFusion.addVisualMotion(tracking.motion!);
       return frame;
     } catch (_) {
       return null;
@@ -165,16 +157,7 @@ class PhoneOnlyBodyScanController {
     if (!_running || !measurement.isUsable) return;
     final pose = poseHistory.interpolate(measurement.timestampMicros, minimumQuality: 0.25);
     if (pose == null || measurement.rssiDbm == null) return;
-    final point = RfSpatialPoint(
-      x: pose.x,
-      y: pose.y,
-      z: pose.z,
-      rssiDbm: measurement.rssiDbm!,
-      frequencyMHz: measurement.frequencyMHz,
-      quality: measurement.quality,
-      uncertaintyDb: _poseUncertaintyDb(pose),
-    );
-    rfMapper.add(point, measurement);
+    rfMapper.add(RfSpatialPoint(x: pose.x, y: pose.y, z: pose.z, rssiDbm: measurement.rssiDbm!, frequencyMHz: measurement.frequencyMHz, quality: measurement.quality, uncertaintyDb: _poseUncertaintyDb(pose)), measurement);
     coordinateFusion.addRfMeasurement(measurement);
     _emitSpatial(RawSignalSample(
       sensorId: 'phone.wifi.rf',
@@ -183,6 +166,8 @@ class PhoneOnlyBodyScanController {
       values: [measurement.rssiDbm!],
       unit: 'dBm',
       quality: measurement.quality,
+      frequencyMHz: measurement.frequencyMHz,
+      channel: measurement.channel,
     ), pose: pose);
   }
 
@@ -197,13 +182,11 @@ class PhoneOnlyBodyScanController {
       final omega = Vector3.array(sample.values);
       final angle = omega.length * dt;
       if (angle.isFinite && angle > 0 && omega.length > 0) {
-        final dq = Quaternion.axisAngle(omega.normalized(), angle);
-        _orientation = (_orientation * dq)..normalize();
+        _orientation = (_orientation * Quaternion.axisAngle(omega.normalized(), angle))..normalize();
         _updatePoseSnapshot(now);
       }
       return;
     }
-
     if (!sample.sensorId.contains('accelerometer')) return;
     final previous = _lastAccelerationMicros;
     _lastAccelerationMicros = now;
@@ -218,7 +201,6 @@ class PhoneOnlyBodyScanController {
       _lastAcceleration = bodyAcceleration;
       return;
     }
-
     final worldAcceleration = _orientation.rotated(bodyAcceleration);
     final linear = worldAcceleration - Vector3(0, 0, 9.80665);
     final previousAcceleration = _lastAcceleration;
@@ -229,33 +211,13 @@ class PhoneOnlyBodyScanController {
     _velocity += acceleration * dt;
     _velocity *= math.exp(-1.8 * dt);
     final position = Vector3(_pose.x, _pose.y, _pose.z) + _velocity * dt;
-    _pose = ScanPose(
-      timestampMicros: now,
-      x: position.x,
-      y: position.y,
-      z: position.z,
-      qx: _orientation.x,
-      qy: _orientation.y,
-      qz: _orientation.z,
-      qw: _orientation.w,
-      quality: _poseQuality(now),
-    );
+    _pose = ScanPose(timestampMicros: now, x: position.x, y: position.y, z: position.z, qx: _orientation.x, qy: _orientation.y, qz: _orientation.z, qw: _orientation.w, quality: _poseQuality(now));
     poseHistory.add(_pose);
     coordinateFusion.addMeasuredPose(_pose);
   }
 
   void _updatePoseSnapshot(int timestampMicros) {
-    _pose = ScanPose(
-      timestampMicros: timestampMicros,
-      x: _pose.x,
-      y: _pose.y,
-      z: _pose.z,
-      qx: _orientation.x,
-      qy: _orientation.y,
-      qz: _orientation.z,
-      qw: _orientation.w,
-      quality: _poseQuality(timestampMicros),
-    );
+    _pose = ScanPose(timestampMicros: timestampMicros, x: _pose.x, y: _pose.y, z: _pose.z, qx: _orientation.x, qy: _orientation.y, qz: _orientation.z, qw: _orientation.w, quality: _poseQuality(timestampMicros));
     poseHistory.add(_pose);
     coordinateFusion.addMeasuredPose(_pose);
   }
