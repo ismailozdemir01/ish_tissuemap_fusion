@@ -1,4 +1,5 @@
 import 'measurement_status.dart';
+import 'tissue_reconstruction_quality.dart';
 
 class TissueVoxel {
   final double x;
@@ -16,8 +17,6 @@ class TissueVoxel {
   });
 }
 
-/// 3-D reconstruction container. `status == valid` is intentionally reserved
-/// for a clinically/experimentally validated tissue model.
 class TissueVolume3D {
   final int width;
   final int height;
@@ -27,6 +26,7 @@ class TissueVolume3D {
   final bool anatomical;
   final String modelId;
   final String reason;
+  final TissueReconstructionQuality quality;
 
   const TissueVolume3D({
     required this.width,
@@ -37,6 +37,7 @@ class TissueVolume3D {
     required this.anatomical,
     required this.modelId,
     required this.reason,
+    required this.quality,
   });
 
   static TissueVolume3D unknown({String reason = 'TISSUE_MODEL_NOT_VALIDATED'}) => TissueVolume3D(
@@ -48,5 +49,6 @@ class TissueVolume3D {
         anatomical: false,
         modelId: '',
         reason: reason,
+        quality: TissueReconstructionQuality.unknown(reason: reason),
       );
 }
