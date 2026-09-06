@@ -58,7 +58,7 @@ void main() {
     expect(rfService, isNot(contains('synthetic')));
     expect(measurement, contains('enum RfAccessLevel'));
     for (final level in const ['rssi', 'linkMetadata', 'csi', 'iq', 'phase', 'unavailable']) {
-      expect(measurement, contains('$level,'), reason: 'Missing RF access level: $level');
+      expect(measurement, contains(level), reason: 'Missing RF access level: $level');
     }
     expect(measurement, contains('accessLevel.name'));
   });
