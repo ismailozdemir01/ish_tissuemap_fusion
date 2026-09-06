@@ -16,6 +16,7 @@ jobs:
   release-gates:
     name: Release safety gates
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -39,6 +40,7 @@ jobs:
     name: Android APK
     needs: release-gates
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -67,6 +69,7 @@ jobs:
     name: Windows EXE
     needs: release-gates
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -99,6 +102,7 @@ jobs:
     name: iOS IPA
     needs: release-gates
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
