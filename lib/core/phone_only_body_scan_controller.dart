@@ -19,8 +19,10 @@ import 'phone_sensor_adapters.dart';
 import 'pose_history.dart';
 import 'rf_spatial_mapper.dart';
 
-/// Coordinates real phone-only acquisition with explicit inertial uncertainty.
-/// It never synthesizes RF observations or anatomical measurements.
+/// Coordinates the primary acquisition path: the phone itself.
+///
+/// RF, inertial and optical observations are accepted only when they are
+/// actually produced by the phone. No anatomical measurement is synthesized.
 class PhoneOnlyBodyScanController {
   PhoneOnlyBodyScanController({
     AcquisitionSession? acquisition,
@@ -40,7 +42,7 @@ class PhoneOnlyBodyScanController {
         rfMapper = rfMapper ?? RfSpatialMapper(),
         poseHistory = poseHistory ?? PoseHistory(),
         opticalRegistration = opticalRegistration ?? const OpticalRegistrationEngine(),
-        coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine(rfMapper: rfMapper ?? RfSpatialMapper());
+        coordinateFusion = coordinateFusion ?? CommonCoordinateFusionEngine(rfMapper: rfMapper);
 
   final AcquisitionSession acquisition;
   final WifiRfService rf;
@@ -95,7 +97,7 @@ class PhoneOnlyBodyScanController {
         try {
           await camera.initialize();
         } catch (_) {
-          // Optical acquisition is optional; failure is represented by no frame.
+          // Optical acquisition remains optional when the camera is unavailable.
         }
       }
       _running = true;
